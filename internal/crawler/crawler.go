@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joyyth/seacrh-engine-v1.0/internal/model"
 	"golang.org/x/net/html"
 )
 
@@ -17,16 +18,11 @@ const (
 )
 
 
-type Page struct{
-	URL string
-	Content string
-}
-
 type Crawler struct {
 	client *http.Client
 	visited  map[string]bool
 	maxDepth int
-	pages []Page
+	pages []model.Document
 }
 type queueItem struct{
 	URL string
