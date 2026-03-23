@@ -1,0 +1,59 @@
+package indexer
+
+import (
+	"fmt"
+
+	"github.com/joyyth/seacrh-engine-v1.0/internal/model"
+	"github.com/joyyth/seacrh-engine-v1.0/internal/store"
+)
+
+type Indexer struct {
+	index     map[string][]int
+	documents []model.Document
+	store store.Store
+
+}
+
+func NewIndexer(s store.Store) *Indexer{
+	return &Indexer{
+		store: s,
+		index: make(map[string][]int),
+		documents: make([]model.Document, 0),
+	}
+}
+
+func (i *Indexer) AddDocument(doc model.Document){
+	doc.ID = len(i.documents)
+	i.documents = append(i.documents, doc)
+	tokens := append(Analyzer(doc.Content), Analyzer(doc.Title)...)
+	for _,token := range tokens{
+		ids :=i.index[token]
+		if len(ids) > 0 {
+            continue 
+        }
+		i.index[token] = append(ids, doc.ID)
+	}
+}
+
+func (i *Indexer) Save() error {
+    if err := i.store.SaveDocuments(i.documents); err != nil {
+        return fmt.Errorf("saving documents: %w", err)
+    }
+    if err := i.store.SaveIndex(i.index); err != nil {
+        return fmt.Errorf("saving index: %w", err)
+    }
+    return nil
+}
+func (i *Indexer) Load() error {
+	documents, err := i.store.LoadDocuments()
+	if err != nil {
+        return fmt.Errorf("loading documents: %w", err)
+    }
+    index, err := i.store.LoadIndex()
+    if err != nil {
+        return fmt.Errorf("loading index: %w", err)
+    }
+	i.documents = documents
+	i.index = index
+	return nil
+}

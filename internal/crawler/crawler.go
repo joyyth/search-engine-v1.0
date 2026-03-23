@@ -69,7 +69,7 @@ func (c *Crawler) Crawl(startURL string) {
 
 	links, content := extractLinks(resp.Body)
 	resp.Body.Close()
-	c.pages = append(c.pages, Page{URL: item.URL, Content: content})
+	c.pages = append(c.pages, model.Document{URL: item.URL, Content: content})
 
 	for _, Link := range links{
 		if !c.visited[Link] && isAllowed(Link){
@@ -135,6 +135,6 @@ func extractLinks(body io.Reader) ([] string, string){
 	 return links, textBuilder.String()
 }
 
-func (c *Crawler) GetPages() []Page{
+func (c *Crawler) GetPages() []model.Document{
 	return c.pages
 }

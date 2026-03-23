@@ -12,11 +12,11 @@ var stopwords = map[string]struct{}{"i": {}, "me": {}, "my": {}, "myself": {}, "
 func tokenize(text string) []string {
 	lowercase := strings.ToLower(text)
 
-	tokenizer := strings.FieldsFunc(lowercase, func(r rune) bool {
+	tokens := strings.FieldsFunc(lowercase, func(r rune) bool {
 		return  !unicode.IsLetter(r) && !unicode.IsNumber(r)
 	})
 
-	 return tokenizer
+	 return tokens
 }
 
 func filterStopWords(tokens []string) [] string{
