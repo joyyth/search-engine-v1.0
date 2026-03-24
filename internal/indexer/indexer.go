@@ -22,6 +22,12 @@ func NewIndexer(s store.Store) *Indexer{
 	}
 }
 
+// Lookup returns document IDs for a token and whether the token exists in the index.
+func (i *Indexer) Lookup(token string) ([]int, bool) {
+	ids, ok := i.index[token]
+	return ids, ok
+}
+
 func (i *Indexer) AddDocument(doc model.Document){
 	doc.ID = len(i.documents)
 	i.documents = append(i.documents, doc)
