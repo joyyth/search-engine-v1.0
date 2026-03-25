@@ -34,11 +34,18 @@ func (i *Indexer) AddDocument(doc model.Document){
 	tokens := append(Analyzer(doc.Content), Analyzer(doc.Title)...)
 	for _,token := range tokens{
 		ids :=i.index[token]
-		if len(ids) > 0 {
-            continue 
-        }
+		if len(ids) > 0 && ids[len(ids)-1] == doc.ID {
+			continue
+		}
 		i.index[token] = append(ids, doc.ID)
 	}
+}
+
+func (i *Indexer) GetDocuments(id int) (model.Document, bool){
+	 if id < 0 || id >=len(i.documents){
+		return model.Document{},false
+	 }
+	 return i.documents[id],true
 }
 
 func (i *Indexer) Save() error {
