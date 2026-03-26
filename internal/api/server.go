@@ -2,8 +2,8 @@ package api
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
+	"time"
 
 	"github.com/joyyth/seacrh-engine-v1.0/internal/search"
 )
@@ -24,9 +24,14 @@ func NewServer(search *search.Search) *Server{
 	 return srv
 }
 
-func (s *Server) Start(addr string)error{
-	log.Printf("Starting server on %s", addr)
-	return  http.ListenAndServe(addr, s.mux)
+func (s *Server) Start(addr string) *http.Server {
+	return &http.Server{
+		Addr:         addr,
+		Handler:      s.mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
 }
 
 func (s *Server) SearchHandler(w http.ResponseWriter, r *http.Request){
@@ -41,9 +46,9 @@ func (s *Server) SearchHandler(w http.ResponseWriter, r *http.Request){
 		http.Error(w, "Failed to encode results", http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
 }
 func (s *Server) HealthHandler(w http.ResponseWriter, r *http.Request){
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    w.Write([]byte(`{"status":"ok"}`))
 }

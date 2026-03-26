@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 
 	"github.com/joyyth/seacrh-engine-v1.0/internal/model"
 )
@@ -14,6 +15,8 @@ type JSONStore struct {
 }
 
 func NewJSONStore(docPath, indexPath string) *JSONStore {
+	os.MkdirAll(path.Dir(docPath), 0755)
+    os.MkdirAll(path.Dir(indexPath), 0755)
 	return &JSONStore{
 		docPath:   docPath,
 		indexPath: indexPath,
@@ -40,16 +43,22 @@ func (s *JSONStore) LoadIndex() (map[string][]int, error){
 }
 
 func writeJSON(path string, v any) error{
-	f, err:=os.Create(path)
-	if err!=nil{
-		return fmt.Errorf("creating file: %w", err)
+	tmpPath := path + ".tmp"
+	f, err := os.Create(tmpPath)
+	if err !=nil{
+		return fmt.Errorf("creating temporary file: %w", err)
 	}
-	defer f.Close()
 
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(v); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
 		return fmt.Errorf("encoding JSON: %w", err)
+	}
+	f.Close()
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("renaming temporary file: %w", err)
 	}
 	return nil
 }
