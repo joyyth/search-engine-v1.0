@@ -10,12 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/joyyth/seacrh-engine-v1.0/internal/api"
-	"github.com/joyyth/seacrh-engine-v1.0/internal/crawler"
-	"github.com/joyyth/seacrh-engine-v1.0/internal/indexer"
-	"github.com/joyyth/seacrh-engine-v1.0/internal/model"
-	"github.com/joyyth/seacrh-engine-v1.0/internal/search"
-	"github.com/joyyth/seacrh-engine-v1.0/internal/store"
+	"github.com/joyyth/search-engine-v1.0/internal/api"
+	"github.com/joyyth/search-engine-v1.0/internal/crawler"
+	"github.com/joyyth/search-engine-v1.0/internal/indexer"
+	"github.com/joyyth/search-engine-v1.0/internal/model"
+	"github.com/joyyth/search-engine-v1.0/internal/search"
+	"github.com/joyyth/search-engine-v1.0/internal/store"
 )
 
 const (
@@ -53,7 +53,7 @@ func runCrawl(store store.Store){
 	crawler.Crawl(startURL)
 
 	pages :=crawler.GetPages()
-	docs := make([]model.Document, len(pages))
+	docs := make([]model.Document,0, len(pages))
 	for _, p := range pages {
         docs = append(docs, model.Document{
             URL:     p.URL,
@@ -93,7 +93,7 @@ func runServe(s store.Store, addr string) {
 
     srv := api.NewServer(search.NewSearch(idx))
 
-    httpServer := srv.Start(addr) // expose the *http.Server from api package
+    httpServer := srv.Start(addr) 
 
     go func() {
         quit := make(chan os.Signal, 1)

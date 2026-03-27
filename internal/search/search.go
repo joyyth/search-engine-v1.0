@@ -3,8 +3,8 @@ package search
 import (
 	"sort"
 
-	"github.com/joyyth/seacrh-engine-v1.0/internal/indexer"
-	"github.com/joyyth/seacrh-engine-v1.0/internal/model"
+	"github.com/joyyth/search-engine-v1.0/internal/indexer"
+	"github.com/joyyth/search-engine-v1.0/internal/model"
 )
 
 type Search struct {

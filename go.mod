@@ -1,4 +1,4 @@
-module github.com/joyyth/seacrh-engine-v1.0
+module github.com/joyyth/search-engine-v1.0
 
 go 1.26.1
 

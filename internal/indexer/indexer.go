@@ -3,8 +3,8 @@ package indexer
 import (
 	"fmt"
 
-	"github.com/joyyth/seacrh-engine-v1.0/internal/model"
-	"github.com/joyyth/seacrh-engine-v1.0/internal/store"
+	"github.com/joyyth/search-engine-v1.0/internal/model"
+	"github.com/joyyth/search-engine-v1.0/internal/store"
 )
 
 type Indexer struct {

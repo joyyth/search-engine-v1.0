@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/joyyth/seacrh-engine-v1.0/internal/search"
+	"github.com/joyyth/search-engine-v1.0/internal/search"
 )
 
 type Server struct{
