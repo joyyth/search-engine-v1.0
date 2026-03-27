@@ -24,7 +24,7 @@ func NewServer(search *search.Search) *Server{
 	 return srv
 }
 
-func (s *Server) Start(addr string) *http.Server {
+func (s *Server) NewServer(addr string) *http.Server {
 	return &http.Server{
 		Addr:         addr,
 		Handler:      s.mux,

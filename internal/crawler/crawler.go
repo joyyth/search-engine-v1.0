@@ -1,14 +1,15 @@
 package crawler
 
 import (
-	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/joyyth/search-engine-v1.0/internal/model"
+	"github.com/joyyth/search-engine-v1.0/internal/utils"
 	"golang.org/x/net/html"
 )
 
@@ -41,11 +42,17 @@ func NewCrawler(depth int) *Crawler{
 
 
 func (c *Crawler) Crawl(startURL string) {
-	queue := []queueItem{{URL: startURL, depth: 0}}
+	normalizedURL, err := utils.NormalizeURL(startURL)
+	if err !=nil{
+		log.Printf("Error normalizing URL: %v", err)
+		return
+	}
+	head :=0 // track queue head index
+	queue := []queueItem{{URL: normalizedURL, depth: 0}}
 
-	for len(queue) >0 && len(c.pages) < maxPages{
-	item := queue[0]
-	queue = queue[1:]
+	for head < len(queue) && len(c.pages) < maxPages{
+	item := queue[head]
+	 head++
 
 	if item.depth >= c.maxDepth{
 		continue;
@@ -58,7 +65,7 @@ func (c *Crawler) Crawl(startURL string) {
 
 	resp, err := c.client.Get(item.URL)
 	if err !=nil{
-		fmt.Println("Error fetching URL:", err)
+		 log.Printf("Error fetching URL: %v", err)
 		continue
 	}
 
@@ -67,15 +74,27 @@ func (c *Crawler) Crawl(startURL string) {
 		continue
 	}
 
-	links, content := extractLinks(resp.Body)
+	links, title, content := extractLinks(resp.Body)
 	resp.Body.Close()
-	c.pages = append(c.pages, model.Document{URL: item.URL, Content: content})
+	c.pages = append(c.pages, model.Document{URL: item.URL, Title: title, Content: content})
 
-	for _, Link := range links{
-		if !c.visited[Link] && isAllowed(Link){
-			queue =append(queue, queueItem{URL: Link, depth: item.depth + 1})
+	for _, link := range links{
+		normalizedLink, err := utils.NormalizeURL(link)
+		if err !=nil{
+			log.Printf("Error normalizing link: %v", err)
+			continue
+		}
+		if !c.visited[normalizedLink] && isAllowed(normalizedLink){
+			queue =append(queue, queueItem{URL: normalizedLink, depth: item.depth + 1})
 		}
 	}
+	// Periodically compact processed items so the backing array
+	// does not retain too much already-consumed queue data.
+	  if head > 1024 && head*2 >= len(queue){
+		queue = append([]queueItem(nil), queue[head:]...)
+		head=0
+	  }
+	  
 	}
 
 }
@@ -88,17 +107,24 @@ func isAllowed(RawURL string) bool{
 	return parsed.Host == allowedHost
 }
 
-func extractLinks(body io.Reader) ([] string, string){
+func extractLinks(body io.Reader) ([] string,string, string){
 	 var links []string
 	 var textBuilder strings.Builder
+	 var title string
 
 	 doc, err :=html.Parse(body)
 	 if err !=nil{
-		return links, ""
+		return links, "", ""
 	 }
 
 	 var walk func(*html.Node)
 	 walk= func (n *html.Node)  {
+		
+		if n.Type== html.ElementNode && n.Data == "title"{
+			if child :=n.FirstChild; child !=nil && child.Type== html.TextNode{
+				title = strings.TrimSpace(child.Data)
+			}
+		}
 		if n.Type == html.ElementNode {
 			switch n.Data {
 			case "script", "style", "nav", "footer", "head":
@@ -132,7 +158,7 @@ func extractLinks(body io.Reader) ([] string, string){
 	 }
 	 }
 	 walk(doc)
-	 return links, textBuilder.String()
+	 return links, title, textBuilder.String()
 }
 
 func (c *Crawler) GetPages() []model.Document{

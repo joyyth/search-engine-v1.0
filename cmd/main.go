@@ -93,7 +93,7 @@ func runServe(s store.Store, addr string) {
 
     srv := api.NewServer(search.NewSearch(idx))
 
-    httpServer := srv.Start(addr) 
+    httpServer := srv.NewServer(addr) 
 
     go func() {
         quit := make(chan os.Signal, 1)
