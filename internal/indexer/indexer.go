@@ -7,6 +7,9 @@ import (
 	"github.com/joyyth/search-engine-v1.0/internal/store"
 )
 
+// Indexer is NOT concurrency-safe.
+// Callers must serialize access (single goroutine) until locking is added
+
 type Indexer struct {
 	index     map[string][]int
 	documents []model.Document

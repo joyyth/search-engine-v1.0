@@ -22,8 +22,8 @@ func tokenize(text string) []string {
 func filterStopWords(tokens []string) [] string{
 	filtered := make([]string,0,len(tokens))
 
-	for _,token := range tokens{
-		if len(token) < 3{
+	for _, token := range tokens {
+		if len(token) < 2 {
 			continue
 		}
 		if _, isStop := stopwords[token];  !isStop{
