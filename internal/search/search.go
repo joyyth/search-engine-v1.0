@@ -7,6 +7,8 @@ import (
 	"github.com/joyyth/search-engine-v1.0/internal/model"
 )
 
+var maxResults = 20
+
 type Search struct {
 	indexer *indexer.Indexer
 }
@@ -26,6 +28,9 @@ func (s *Search) Search(query string) []model.Document{
 			}
 		}
 	}
+	if len(scores) == 0{
+		return []model.Document{}
+	}
 
 	type scoredDocument struct {
 		id int
@@ -38,21 +43,15 @@ func (s *Search) Search(query string) []model.Document{
 	sort.Slice(ranked, func(i,j int)bool{
 		return ranked[i].score > ranked[j].score
 	})
-	results := make([]model.Document,0,len(ranked))
-	for _, ranked :=range ranked{
-		if doc,ok := s.indexer.GetDocuments(ranked.id); ok{
+	results := make([]model.Document,0,maxResults)
+	for _, r :=range ranked{
+		if doc,ok := s.indexer.GetDocument(r.id); ok{
 			results = append(results, doc)
+			if len(results) >= maxResults{
+				break
+			}
 		}
 	}
-	return results
-}
-func (s *Search) Rank(results [][]int) [][]int{
-	 ranked := make([][]int, len(results))
 
-	 for i, ids := range results{
-		for _, id := range ids{
-			ranked[i]= append(ranked[i], id)
-		}
-	 }
-	 return ranked
+	return results
 }

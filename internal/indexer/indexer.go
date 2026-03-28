@@ -41,7 +41,7 @@ func (i *Indexer) AddDocument(doc model.Document){
 	}
 }
 
-func (i *Indexer) GetDocuments(id int) (model.Document, bool){
+func (i *Indexer) GetDocument(id int) (model.Document, bool){
 	 if id < 0 || id >=len(i.documents){
 		return model.Document{},false
 	 }

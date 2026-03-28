@@ -35,7 +35,10 @@ func main() {
         os.Exit(1)
     }
 
-	jsonStore := store.NewJSONStore(docsPath, indexPath)
+	jsonStore, err := store.NewJSONStore(docsPath, indexPath)
+	if err != nil {
+		log.Fatalf("json store: %v", err)
+	}
 
 	if *crawlMode{
 		runCrawl(jsonStore)
