@@ -13,37 +13,36 @@ func tokenize(text string) []string {
 	lowercase := strings.ToLower(text)
 
 	tokens := strings.FieldsFunc(lowercase, func(r rune) bool {
-		return  !unicode.IsLetter(r) && !unicode.IsNumber(r)
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
 	})
 
-	 return tokens
+	return tokens
 }
 
-func filterStopWords(tokens []string) [] string{
-	filtered := make([]string,0,len(tokens))
+func filterStopWords(tokens []string) []string {
+	filtered := make([]string, 0, len(tokens))
 
 	for _, token := range tokens {
 		if len(token) < 2 {
 			continue
 		}
-		if _, isStop := stopwords[token];  !isStop{
+		if _, isStop := stopwords[token]; !isStop {
 			filtered = append(filtered, token)
 		}
 	}
 	return filtered
 }
-func stem(tokens []string) [] string{
+func stem(tokens []string) []string {
 	stemmed := make([]string, len(tokens))
-	for i, token := range tokens{
-		stemmed[i]= snowball.Stem(token, false)
+	for i, token := range tokens {
+		stemmed[i] = snowball.Stem(token, false)
 	}
 	return stemmed
 }
 
-
-func Analyzer(text string) []string{
-   tokenized := tokenize(text)
-   filtered := filterStopWords(tokenized)
-   stemmed := stem(filtered)
-   return stemmed
+func Analyzer(text string) []string {
+	tokenized := tokenize(text)
+	filtered := filterStopWords(tokenized)
+	stemmed := stem(filtered)
+	return stemmed
 }

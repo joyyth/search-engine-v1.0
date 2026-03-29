@@ -8,20 +8,20 @@ import (
 	"github.com/joyyth/search-engine-v1.0/internal/search"
 )
 
-type Server struct{
+type Server struct {
 	search *search.Search
-	mux *http.ServeMux
+	mux    *http.ServeMux
 }
 
-func NewServer(search *search.Search) *Server{
-	 srv := &Server{
+func NewServer(search *search.Search) *Server {
+	srv := &Server{
 		search: search,
-		mux: http.NewServeMux(),
-	 }
+		mux:    http.NewServeMux(),
+	}
 
-	 srv.mux.HandleFunc("GET /search", srv.SearchHandler)
-	 srv.mux.HandleFunc("GET /health", srv.HealthHandler)
-	 return srv
+	srv.mux.HandleFunc("GET /search", srv.SearchHandler)
+	srv.mux.HandleFunc("GET /health", srv.HealthHandler)
+	return srv
 }
 
 func (s *Server) NewServer(addr string) *http.Server {
@@ -34,9 +34,9 @@ func (s *Server) NewServer(addr string) *http.Server {
 	}
 }
 
-func (s *Server) SearchHandler(w http.ResponseWriter, r *http.Request){
-	query:= r.URL.Query().Get("q")
-	if query == ""{
+func (s *Server) SearchHandler(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	if query == "" {
 		http.Error(w, "Missing query parameter", http.StatusBadRequest)
 		return
 	}
@@ -47,8 +47,8 @@ func (s *Server) SearchHandler(w http.ResponseWriter, r *http.Request){
 		return
 	}
 }
-func (s *Server) HealthHandler(w http.ResponseWriter, r *http.Request){
+func (s *Server) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(http.StatusOK)
-    w.Write([]byte(`{"status":"ok"}`))
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"ok"}`))
 }

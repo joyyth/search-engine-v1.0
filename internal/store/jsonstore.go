@@ -27,29 +27,29 @@ func NewJSONStore(docPath, indexPath string) (*JSONStore, error) {
 	}, nil
 }
 
-func (s *JSONStore) SaveDocuments(docs []model.Document) error{
-	return writeJSON(s.docPath,docs)
+func (s *JSONStore) SaveDocuments(docs []model.Document) error {
+	return writeJSON(s.docPath, docs)
 }
-func (s *JSONStore) LoadDocuments() ([]model.Document, error){
+func (s *JSONStore) LoadDocuments() ([]model.Document, error) {
 	var docs []model.Document
 	err := readJSON(s.docPath, &docs)
 	return docs, err
 }
 
-func (s *JSONStore) SaveIndex(index map[string][]int) error{
-      return  writeJSON(s.indexPath,index)
+func (s *JSONStore) SaveIndex(index map[string][]int) error {
+	return writeJSON(s.indexPath, index)
 }
 
-func (s *JSONStore) LoadIndex() (map[string][]int, error){
+func (s *JSONStore) LoadIndex() (map[string][]int, error) {
 	index := make(map[string][]int)
 	err := readJSON(s.indexPath, &index)
 	return index, err
 }
 
-func writeJSON(path string, v any) error{
+func writeJSON(path string, v any) error {
 	tmpPath := path + ".tmp"
 	f, err := os.Create(tmpPath)
-	if err !=nil{
+	if err != nil {
 		return fmt.Errorf("creating temporary file %s: %w", tmpPath, err)
 	}
 
@@ -68,7 +68,7 @@ func writeJSON(path string, v any) error{
 	}
 	return nil
 }
-func readJSON(path string, v any) error{
+func readJSON(path string, v any) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("error opening file %s : %w", path, err)

@@ -10,19 +10,19 @@ import (
 
 func NormalizeURL(rawURL string) (string, error) {
 	parsed, err := url.Parse(rawURL)
-    
-	if err !=nil{
+
+	if err != nil {
 		return "", fmt.Errorf("could not parse URL : %w", err)
 	}
-    
-	if parsed.Scheme !="http" && parsed.Scheme !="https"{
+
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return "", fmt.Errorf("URL has invalid scheme")
 	}
-     
+
 	parsed.Fragment = ""
-	 
-    if parsed.Host == "" {
-        return "", fmt.Errorf("URL has no field 'Host'")
+
+	if parsed.Host == "" {
+		return "", fmt.Errorf("URL has no field 'Host'")
 	}
 
 	host := strings.ToLower(parsed.Hostname())
@@ -34,15 +34,15 @@ func NormalizeURL(rawURL string) (string, error) {
 	}
 
 	cleanPath := path.Clean(parsed.Path)
-	if cleanPath == "."{
+	if cleanPath == "." {
 		cleanPath = ""
 	}
 	parsed.Path = strings.TrimSuffix(cleanPath, "/")
 	if parsed.Path == "" {
 		parsed.Path = "/"
 	}
-	parsed.RawPath = "" 
-	
+	parsed.RawPath = ""
+
 	return parsed.String(), nil
 
 }
