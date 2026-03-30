@@ -2,9 +2,11 @@ package search
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/joyyth/search-engine-v1.0/internal/indexer"
 	"github.com/joyyth/search-engine-v1.0/internal/model"
+	"github.com/joyyth/search-engine-v1.0/internal/utils"
 )
 
 var maxResults = 20
@@ -15,6 +17,18 @@ type Search struct {
 
 func NewSearch(indexer *indexer.Indexer) *Search {
 	return &Search{indexer: indexer}
+}
+func (s *Search) SearchWithSnippets(query string) []Result {
+	docs := s.Search(query)
+	rawTokens := strings.Fields(strings.ToLower(query))
+	results := make([]Result, len(docs))
+	for i, doc := range docs {
+		results[i] = Result{
+			Document: doc,
+			Snippet:  utils.BuildSnippet(rawTokens, doc.Content),
+		}
+	}
+	return results
 }
 
 func (s *Search) Search(query string) []model.Document {

@@ -40,7 +40,7 @@ func (s *Server) SearchHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Missing query parameter", http.StatusBadRequest)
 		return
 	}
-	results := s.search.Search(query)
+	results := s.search.SearchWithSnippets(query)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(results); err != nil {
 		http.Error(w, "Failed to encode results", http.StatusInternalServerError)

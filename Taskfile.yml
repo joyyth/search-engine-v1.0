@@ -1,34 +1,26 @@
 # yaml-language-server: $schema=https://taskfile.dev/schema.json
 
-version: '3'
+version: "3"
 
 vars:
   BIN_DIR: bin
   EXE: '{{if eq OS "windows"}}.exe{{end}}'
-  BIN: '{{.BIN_DIR}}/search-engine{{.EXE}}'
-  GO_FLAGS: '-trimpath'
+  BIN: "{{.BIN_DIR}}/search-engine{{.EXE}}"
+  GO_FLAGS: "-trimpath"
   MAIN: ./cmd
 
 tasks:
-  default:
-    desc: Run verify pipeline (format check, vet, tests)
+  fmt:check:
+    desc: Check formatting (use before commit or in CI)
     cmds:
-      - task: check
-
-  check:
-    desc: Format check, vet, and test (use before commit or in CI)
+      - cmd: test -z "$(gofmt -l .)"
+        platforms: [linux, darwin]
+      - cmd: cmd /c "gofmt -l . | findstr . >nul && exit /b 1 || exit /b 0"
+        platforms: [windows]
+  fmt:fix:
+    desc: Fix formatting
     cmds:
-      - task: fmt:check
-      - task: vet
-      - task: test
-
-  ci:
-    desc: Full CI-style run including race detector and coverage
-    cmds:
-      - task: fmt:check
-      - task: vet
-      - task: test:race
-      - task: test:cover
+      - cmd: gofmt -w .
 
   tidy:
     desc: Run go mod tidy
@@ -82,56 +74,12 @@ tasks:
   test:v:
     desc: Run tests verbose
     cmds:
-      - go test -v ./...
-
-  test:race:
-    desc: Run tests with race detector
-    cmds:
-      - go test -race ./...
-
-  test:cover:
-    desc: Run tests with coverage summary per package
-    cmds:
-      - go test -cover ./...
-
-  test:cover:out:
-    desc: Write coverage profile to coverage.out
-    cmds:
-      - go test -coverprofile=coverage.out ./...
-      - go tool cover -func=coverage.out
+      - go test -v -race ./...
 
   bench:
     desc: Run benchmarks (if any)
     cmds:
       - go test -bench=. -benchmem ./...
-
-  fmt:
-    desc: Format all Go sources (gofmt)
-    cmds:
-      - go fmt ./...
-
-  fmt:check:
-    desc: Fail if any file is not gofmt'd (per-OS)
-    cmds:
-      - cmd: test -z "$(gofmt -l -e .)"
-        platforms: [linux, darwin]
-      - cmd: cmd /c "gofmt -l -e . | findstr /R /C:\".\" >nul && exit /b 1 || exit /b 0"
-        platforms: [windows]
-
-  vet:
-    desc: Run go vet on all packages
-    cmds:
-      - go vet ./...
-
-  generate:
-    desc: Run go generate (if you add //go:generate directives)
-    cmds:
-      - go generate ./...
-
-  lint:
-    desc: Run golangci-lint (install from https://golangci-lint.run/ if missing)
-    cmds:
-      - golangci-lint run ./...
 
   clean:
     desc: Remove bin/ and coverage.out
