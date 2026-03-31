@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -28,7 +29,7 @@ func NewServer(search *search.Search) *Server {
 func (s *Server) NewServer(addr string) *http.Server {
 	return &http.Server{
 		Addr:         addr,
-		Handler:      s.mux,
+		Handler:      s.withLogging(s.withCORS(s.mux)),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -61,4 +62,23 @@ func (s *Server) StatsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to encode stats", http.StatusInternalServerError)
 		return
 	}
+}
+
+func (s *Server) withCORS(next http.Handler) http.Handler{
+	return http.HandlerFunc( func(w http.ResponseWriter, r *http.Request){
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+        w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+        next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) withLogging(next http.Handler) http.Handler{
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request){
+		start := time.Now()
+	    next.ServeHTTP(w, r)
+		duration := time.Since(start)
+		slog.Info("request", "method", r.Method, "url", r.URL.Path, "remote_addr", r.RemoteAddr, "duration", duration)
+	
+	})
 }

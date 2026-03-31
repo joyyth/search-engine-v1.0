@@ -98,14 +98,11 @@ func (i *Indexer) Stats() Stats{
 		return  pairs[i].count >pairs[j].count
 	})
 
-	top := 10;
-	top = min(top, len(pairs))
-
+	top := min(10, len(pairs))
 	topTerms := make([]TermStat,top)
-	for i:=0; i<top; i++{
-		topTerms[i]=TermStat{Term: pairs[i].term, DocCount: pairs[i].count}
-	}
-
+	for idx, p := range pairs[:top] {
+        topTerms[idx] = TermStat{Term: p.term, DocCount: p.count}
+    }
 	return Stats{
 		TotalDocuments: len(i.documents),
 		TotalTerms: len(i.index),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -25,6 +26,10 @@ const (
 )
 
 func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+	slog.SetDefault(logger)
 	crawlMode := flag.Bool("crawl", false, "crawl pkg.go.dev/std")
 	indexMode := flag.Bool("index", false, "index the crawled pages")
 	serveMode := flag.Bool("serve", false, "serve the search engine")
