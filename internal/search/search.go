@@ -11,6 +11,11 @@ import (
 
 var maxResults = 20
 
+type Result struct {
+    Document model.Document
+    Snippet  string
+}
+
 type Search struct {
 	indexer *indexer.Indexer
 }
@@ -19,16 +24,16 @@ func NewSearch(indexer *indexer.Indexer) *Search {
 	return &Search{indexer: indexer}
 }
 func (s *Search) SearchWithSnippets(query string) []Result {
-	docs := s.Search(query)
-	rawTokens := strings.Fields(strings.ToLower(query))
-	results := make([]Result, len(docs))
-	for i, doc := range docs {
-		results[i] = Result{
-			Document: doc,
-			Snippet:  utils.BuildSnippet(rawTokens, doc.Content),
-		}
-	}
-	return results
+    docs := s.Search(query)
+    rawTokens := strings.Fields(strings.ToLower(query))
+    results := make([]Result, len(docs))
+    for i, doc := range docs {
+        results[i] = Result{
+            Document: doc,
+            Snippet:  utils.BuildSnippet(rawTokens, doc.Content),
+        }
+    }
+    return results
 }
 
 func (s *Search) Search(query string) []model.Document {
@@ -68,4 +73,8 @@ func (s *Search) Search(query string) []model.Document {
 	}
 
 	return results
+}
+
+func (s *Search) Stats() indexer.Stats{
+	return s.indexer.Stats()
 }

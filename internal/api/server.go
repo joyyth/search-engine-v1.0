@@ -21,6 +21,7 @@ func NewServer(search *search.Search) *Server {
 
 	srv.mux.HandleFunc("GET /search", srv.SearchHandler)
 	srv.mux.HandleFunc("GET /health", srv.HealthHandler)
+	srv.mux.HandleFunc("GET /stats", srv.StatsHandler)
 	return srv
 }
 
@@ -51,4 +52,13 @@ func (s *Server) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"ok"}`))
+}
+
+func (s *Server) StatsHandler(w http.ResponseWriter, r *http.Request) {
+	stats := s.search.Stats()
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(stats); err != nil {
+		http.Error(w, "Failed to encode stats", http.StatusInternalServerError)
+		return
+	}
 }

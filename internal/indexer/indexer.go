@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/joyyth/search-engine-v1.0/internal/model"
 	"github.com/joyyth/search-engine-v1.0/internal/store"
@@ -14,6 +15,16 @@ type Indexer struct {
 	index     map[string][]int
 	documents []model.Document
 	store     store.Store
+}
+type Stats struct{
+	TotalDocuments int `json:"total_documents"`
+	TotalTerms int `json:"total_terms"`
+	TopTerms []TermStat `json:"term_stats"`
+}
+
+type TermStat struct{
+	Term string `json:"term"`
+	DocCount int `json:"doc_count"`
 }
 
 func NewIndexer(s store.Store) *Indexer {
@@ -71,4 +82,34 @@ func (i *Indexer) Load() error {
 	i.documents = documents
 	i.index = index
 	return nil
+}
+
+func (i *Indexer) Stats() Stats{
+
+	type kv struct{
+		term string 
+		count int 
+	}
+    pairs := make([]kv,0, len(i.index))
+	for term, ids := range i.index{
+		 pairs = append(pairs, kv{term:term, count: len(ids)})
+	}
+	sort.Slice(pairs, func(i,j int) bool{
+		return  pairs[i].count >pairs[j].count
+	})
+
+	top := 10;
+	top = min(top, len(pairs))
+
+	topTerms := make([]TermStat,top)
+	for i:=0; i<top; i++{
+		topTerms[i]=TermStat{Term: pairs[i].term, DocCount: pairs[i].count}
+	}
+
+	return Stats{
+		TotalDocuments: len(i.documents),
+		TotalTerms: len(i.index),
+		TopTerms: topTerms,
+	}
+
 }

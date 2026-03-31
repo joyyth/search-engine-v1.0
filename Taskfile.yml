@@ -10,13 +10,6 @@ vars:
   MAIN: ./cmd
 
 tasks:
-  fmt:check:
-    desc: Check formatting (use before commit or in CI)
-    cmds:
-      - cmd: test -z "$(gofmt -l .)"
-        platforms: [linux, darwin]
-      - cmd: cmd /c "gofmt -l . | findstr . >nul && exit /b 1 || exit /b 0"
-        platforms: [windows]
   fmt:fix:
     desc: Fix formatting
     cmds:
