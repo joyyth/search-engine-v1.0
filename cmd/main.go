@@ -30,11 +30,12 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 	slog.SetDefault(logger)
+    
 	crawlMode := flag.Bool("crawl", false, "crawl pkg.go.dev/std")
 	indexMode := flag.Bool("index", false, "index the crawled pages")
 	serveMode := flag.Bool("serve", false, "serve the search engine")
 	flag.Parse()
-
+    
 	if !*crawlMode && !*indexMode && !*serveMode {
 		flag.Usage()
 		os.Exit(1)
@@ -58,8 +59,7 @@ func main() {
 
 func runCrawl(store store.Store) {
 	crawler := crawler.NewCrawler(3)
-	crawler.Crawl(startURL)
-
+	crawler.Crawl(startURL, 10)
 	pages := crawler.GetPages()
 	docs := make([]model.Document, 0, len(pages))
 	for _, p := range pages {
