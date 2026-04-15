@@ -18,7 +18,6 @@ func NormalizeURL(rawURL string) (string, error) {
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return "", fmt.Errorf("URL has invalid scheme")
 	}
-
 	parsed.Fragment = ""
 
 	if parsed.Host == "" {

@@ -22,7 +22,7 @@ import (
 const (
 	docsPath  = "data/pages.json"
 	indexPath = "data/index.json"
-	startURL  = "https://pkg.go.dev/std"
+	startURL  = "https://en.wikipedia.org/wiki/Main_Page"
 )
 
 func main() {
@@ -30,12 +30,12 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 	slog.SetDefault(logger)
-    
+
 	crawlMode := flag.Bool("crawl", false, "crawl pkg.go.dev/std")
 	indexMode := flag.Bool("index", false, "index the crawled pages")
 	serveMode := flag.Bool("serve", false, "serve the search engine")
 	flag.Parse()
-    
+
 	if !*crawlMode && !*indexMode && !*serveMode {
 		flag.Usage()
 		os.Exit(1)
@@ -58,8 +58,10 @@ func main() {
 }
 
 func runCrawl(store store.Store) {
+	start := time.Now()
 	crawler := crawler.NewCrawler(3)
 	crawler.Crawl(startURL, 10)
+	crawlDuration := time.Since(start)
 	pages := crawler.GetPages()
 	docs := make([]model.Document, 0, len(pages))
 	for _, p := range pages {
@@ -72,7 +74,11 @@ func runCrawl(store store.Store) {
 	if err := store.SaveDocuments(docs); err != nil {
 		log.Fatalf("Failed to save documents: %v", err)
 	}
-	log.Printf("crawled %d pages, saved to disk", len(pages))
+	slog.Info("crawl saved",
+		"pages", len(pages),
+		"crawl_duration", crawlDuration,
+		"total_duration", time.Since(start),
+	)
 }
 
 func runIndex(store store.Store) {
