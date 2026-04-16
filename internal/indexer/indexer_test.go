@@ -8,13 +8,13 @@ import (
 
 type mockStore struct {
 	docs  []model.Document
-	index map[string][]int
+	index map[string][]model.Posting
 }
 
 func (m *mockStore) SaveDocuments(docs []model.Document) error { m.docs = docs; return nil }
 func (m *mockStore) LoadDocuments() ([]model.Document, error)  { return m.docs, nil }
-func (m *mockStore) SaveIndex(idx map[string][]int) error      { m.index = idx; return nil }
-func (m *mockStore) LoadIndex() (map[string][]int, error)      { return m.index, nil }
+func (m *mockStore) SaveIndex(idx map[string][]model.Posting) error { m.index = idx; return nil }
+func (m *mockStore) LoadIndex() (map[string][]model.Posting, error) { return m.index, nil }
 
 func TestLookup(t *testing.T) {
 	idx := NewIndexer(&mockStore{})
@@ -53,9 +53,9 @@ func TestLookup(t *testing.T) {
 			if len(ids) != len(test.wantIDs) {
 				t.Fatalf("Lookup(%q) returned %v, want %v", test.token, ids, test.wantIDs)
 			}
-			for i, id := range ids {
-				if id != test.wantIDs[i] {
-					t.Errorf("Lookup(%q)[%d] = %d, want %d", test.token, i, id, test.wantIDs[i])
+			for i, p := range ids {
+				if p.DocID != test.wantIDs[i] {
+					t.Errorf("Lookup(%q)[%d].DocID = %d, want %d", test.token, i, p.DocID, test.wantIDs[i])
 				}
 			}
 		})

@@ -36,12 +36,12 @@ func (s *JSONStore) LoadDocuments() ([]model.Document, error) {
 	return docs, err
 }
 
-func (s *JSONStore) SaveIndex(index map[string][]int) error {
+func (s *JSONStore) SaveIndex(index map[string][]model.Posting) error {
 	return writeJSON(s.indexPath, index)
 }
 
-func (s *JSONStore) LoadIndex() (map[string][]int, error) {
-	index := make(map[string][]int)
+func (s *JSONStore) LoadIndex() (map[string][]model.Posting, error) {
+	index := make(map[string][]model.Posting)
 	err := readJSON(s.indexPath, &index)
 	return index, err
 }

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/joyyth/search-engine-v1.0/internal/model"
@@ -43,10 +44,17 @@ type workerResult struct {
 }
 
 type crawlStats struct {
-	started       int
-	succeeded     int
-	requestErrors int
-	nonOK         int
+	started       atomic.Int32
+	succeeded     atomic.Int32
+	requestErrors atomic.Int32
+	nonOK         atomic.Int32
+}
+
+type crawlStatsSnapshot struct {
+	started       int32
+	succeeded     int32
+	requestErrors int32
+	nonOK         int32
 }
 
 func NewCrawler(depth int) *Crawler {
@@ -283,33 +291,28 @@ func (c *Crawler) tryAddPage(doc model.Document) bool {
 }
 
 func (c *Crawler) recordFetchStart() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.stats.started++
+	c.stats.started.Add(1)
 }
 
 func (c *Crawler) recordFetchSuccess() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.stats.succeeded++
+	c.stats.succeeded.Add(1)
 }
 
 func (c *Crawler) recordRequestError() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.stats.requestErrors++
+	c.stats.requestErrors.Add(1)
 }
 
 func (c *Crawler) recordNonOK() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.stats.nonOK++
+	c.stats.nonOK.Add(1)
 }
 
-func (c *Crawler) statsSnapshot() crawlStats {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.stats
+func (c *Crawler) statsSnapshot() crawlStatsSnapshot {
+	return crawlStatsSnapshot{
+		started:       c.stats.started.Load(),
+		succeeded:     c.stats.succeeded.Load(),
+		requestErrors: c.stats.requestErrors.Load(),
+		nonOK:         c.stats.nonOK.Load(),
+	}
 }
 
 func isAllowed(rawURL string) bool {

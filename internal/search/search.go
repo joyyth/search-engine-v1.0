@@ -1,6 +1,7 @@
 package search
 
 import (
+	"math"
 	"sort"
 	"strings"
 
@@ -39,12 +40,19 @@ func (s *Search) SearchWithSnippets(query string) []Result {
 func (s *Search) Search(query string) []model.Document {
 	tokens := indexer.Analyzer(query)
 
-	scores := make(map[int]int)
+	scores := make(map[int]float64)
+	n := float64(s.indexer.Stats().TotalDocuments)
+	if n == 0 {
+        return nil
+    }
 	for _, token := range tokens {
-		if ids, ok := s.indexer.Lookup(token); ok {
-			for _, id := range ids {
-				scores[id]++
-			}
+		postings,ok :=s.indexer.Lookup(token)
+		if !ok {
+			continue
+		}
+	    idf := math.Log(1 + n/float64(len(postings)))
+		for _,p := range postings {
+			scores[p.DocID] += p.TF * idf
 		}
 	}
 	if len(scores) == 0 {
@@ -53,7 +61,7 @@ func (s *Search) Search(query string) []model.Document {
 
 	type scoredDocument struct {
 		id    int
-		score int
+		score float64
 	}
 	ranked := make([]scoredDocument, 0, len(scores))
 	for id, score := range scores {
@@ -62,7 +70,8 @@ func (s *Search) Search(query string) []model.Document {
 	sort.Slice(ranked, func(i, j int) bool {
 		return ranked[i].score > ranked[j].score
 	})
-	results := make([]model.Document, 0, maxResults)
+
+	results := make([]model.Document, 0, len(ranked))
 	for _, r := range ranked {
 		if doc, ok := s.indexer.GetDocument(r.id); ok {
 			results = append(results, doc)
