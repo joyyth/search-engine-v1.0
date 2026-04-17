@@ -2,7 +2,6 @@ package crawler
 
 import (
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -68,7 +67,6 @@ func NewCrawler(depth int) *Crawler {
 			Timeout:   10 * time.Second,
 			Transport: transport,
 		},
-		visited:  make(map[string]bool),
 		maxDepth: depth,
 	}
 }
@@ -100,7 +98,7 @@ func (c *Crawler) Crawl(startURL string, numWorkers int) {
 
 	normalizedURL, err := normalizeCrawlURL(startURL)
 	if err != nil {
-		log.Printf("Error normalizing URL: %v", err)
+		slog.Info("normalize start URL failed", "url", startURL, "error", err)
 		return
 	}
 
@@ -120,7 +118,7 @@ func (c *Crawler) Crawl(startURL string, numWorkers int) {
 		close(results)
 	}()
 
-	visited := map[string]bool{normalizedURL: true}
+	c.visited = map[string]bool{normalizedURL: true}
 	queue := []queueItem{{URL: normalizedURL, depth: 0}}
 	pending := 0
 
@@ -136,13 +134,13 @@ func (c *Crawler) Crawl(startURL string, numWorkers int) {
 		}
 		for _, link := range result.links {
 			normalizedLink, err := normalizeCrawlURL(link)
-			if err != nil || !isAllowed(normalizedLink) || visited[normalizedLink] {
+			if err != nil || !isAllowed(normalizedLink) || c.visited[normalizedLink] {
 				continue
 			}
 			if c.pageCount() >= maxPages {
 				break
 			}
-			visited[normalizedLink] = true
+			c.visited[normalizedLink] = true
 			queue = append(queue, queueItem{URL: normalizedLink, depth: result.item.depth + 1})
 		}
 	}
@@ -231,7 +229,6 @@ func (c *Crawler) fetch(item queueItem) workerResult {
 			"duration", time.Since(start),
 			"error", err,
 		)
-		log.Printf("Error fetching URL: %v", err)
 		return workerResult{
 			item: item,
 		}
@@ -340,6 +337,7 @@ func extractLinks(body io.Reader) ([]string, string, string) {
 			if child := n.FirstChild; child != nil && child.Type == html.TextNode {
 				title = strings.TrimSpace(child.Data)
 			}
+			return
 		}
 		if n.Type == html.ElementNode {
 			switch n.Data {
@@ -352,13 +350,15 @@ func extractLinks(body io.Reader) ([]string, string, string) {
 				if attr.Key == "href" {
 					link := attr.Val
 
-					if strings.HasPrefix(link, "/") {
+					switch {
+					case strings.HasPrefix(link, "//"):
+						link = "https:" + link
+					case strings.HasPrefix(link, "/"):
 						link = "https://" + allowedHost + link
+					case !strings.HasPrefix(link, "http"):
+						continue
 					}
-					if strings.HasPrefix(link, "http") {
-						links = append(links, link)
-
-					}
+					links = append(links, link)
 				}
 			}
 		}

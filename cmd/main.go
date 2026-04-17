@@ -113,13 +113,13 @@ func runServe(s store.Store, addr string) {
 		quit := make(chan os.Signal, 1)
 		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 		<-quit
-		log.Println("shutting down...")
+		slog.Info("shutting down")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		httpServer.Shutdown(ctx)
 	}()
 
-	log.Printf("starting server on %s", addr)
+	slog.Info("starting server", "addr", addr)
 	if err := httpServer.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
 	}
