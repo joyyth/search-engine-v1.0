@@ -33,14 +33,15 @@ func NewIndexer(s store.Store) *Indexer {
 }
 
 // Lookup returns document IDs for a token and whether the token exists in the index.
-func (i *Indexer) Lookup(token string) ([]model.Posting, bool) {
-	ids, ok := i.index[token]
+func (idx *Indexer) Lookup(token string) ([]model.Posting, bool) {
+	ids, ok := idx.index[token]
 	return ids, ok
 }
 
-func (i *Indexer) AddDocument(doc model.Document) {
-	doc.ID = len(i.documents)
-	i.documents = append(i.documents, doc)
+// not safe for concurrent use
+func (idx *Indexer) AddDocument(doc model.Document) {
+	doc.ID = len(idx.documents)
+	idx.documents = append(idx.documents, doc)
 	tokens := append(Analyzer(doc.Content), Analyzer(doc.Title)...)
 
 	// count the occurrences of each token in the document
@@ -49,44 +50,47 @@ func (i *Indexer) AddDocument(doc model.Document) {
 		termCounts[t]++
 	}
 	totalTokens := len(tokens)
+	if totalTokens == 0 {
+		return
+	}
 	for token, count := range termCounts{
 		tf := float64(count) / float64(totalTokens)
-		i.index[token] = append(i.index[token], model.Posting{DocID: doc.ID, TF: tf})
+		idx.index[token] = append(idx.index[token], model.Posting{DocID: doc.ID, TF: tf})
 	}
 }
 
-func (i *Indexer) GetDocument(id int) (model.Document, bool) {
-	if id < 0 || id >= len(i.documents) {
+func (idx *Indexer) GetDocument(id int) (model.Document, bool) {
+	if id < 0 || id >= len(idx.documents) {
 		return model.Document{}, false
 	}
-	return i.documents[id], true
+	return idx.documents[id], true
 }
 
 // DocCount returns the number of documents indexed (for IDF and similar).
-func (i *Indexer) DocCount() int {
-	return len(i.documents)
+func (idx *Indexer) DocCount() int {
+	return len(idx.documents)
 }
 
-func (i *Indexer) Save() error {
-	if err := i.store.SaveDocuments(i.documents); err != nil {
+func (idx *Indexer) Save() error {
+	if err := idx.store.SaveDocuments(idx.documents); err != nil {
 		return fmt.Errorf("saving documents: %w", err)
 	}
-	if err := i.store.SaveIndex(i.index); err != nil {
+	if err := idx.store.SaveIndex(idx.index); err != nil {
 		return fmt.Errorf("saving index: %w", err)
 	}
 	return nil
 }
-func (i *Indexer) Load() error {
-	documents, err := i.store.LoadDocuments()
+func (idx *Indexer) Load() error {
+	documents, err := idx.store.LoadDocuments()
 	if err != nil {
 		return fmt.Errorf("loading documents: %w", err)
 	}
-	index, err := i.store.LoadIndex()
+	index, err := idx.store.LoadIndex()
 	if err != nil {
 		return fmt.Errorf("loading index: %w", err)
 	}
-	i.documents = documents
-	i.index = index
+	idx.documents = documents
+	idx.index = index
 	return nil
 }
 

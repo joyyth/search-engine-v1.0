@@ -59,8 +59,12 @@ func main() {
 
 func runCrawl(store store.Store) {
 	start := time.Now()
-	crawler := crawler.NewCrawler(3)
-	crawler.Crawl(startURL, 10)
+	crawler := crawler.NewCrawler(3, crawler.Config{
+		AllowedHost: "en.wikipedia.org",
+		MaxPages:    200,
+		UserAgent:   "SearchEngineV1/0.1 (https://joyyth.com/bot; joyyth@gmail.com)",
+	})
+	crawler.Crawl(context.Background(), startURL, 10)
 	crawlDuration := time.Since(start)
 	pages := crawler.GetPages()
 	docs := make([]model.Document, 0, len(pages))
@@ -107,7 +111,7 @@ func runServe(s store.Store, addr string) {
 
 	srv := api.NewServer(search.NewSearch(idx))
 
-	httpServer := srv.NewServer(addr)
+	httpServer := srv.BuildHTTPServer(addr)
 
 	go func() {
 		quit := make(chan os.Signal, 1)

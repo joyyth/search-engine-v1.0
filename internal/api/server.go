@@ -26,7 +26,7 @@ func NewServer(search *search.Search) *Server {
 	return srv
 }
 
-func (s *Server) NewServer(addr string) *http.Server {
+func (s *Server) BuildHTTPServer(addr string) *http.Server {
 	return &http.Server{
 		Addr:         addr,
 		Handler:      s.withLogging(s.withCORS(s.mux)),

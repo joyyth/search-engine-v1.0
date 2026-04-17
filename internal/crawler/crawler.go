@@ -1,6 +1,7 @@
 package crawler
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -16,13 +17,21 @@ import (
 )
 
 const (
-	allowedHost = "en.wikipedia.org"
-	maxPages    = 200
-	userAgent   = "SearchEngineV1/0.1 (https://joyyth.com/bot; joyyth@gmail.com)"
+	defaultAllowedHost = "en.wikipedia.org"
+	defaultMaxPages    = 200
+	defaultUserAgent   = "SearchEngineV1/0.1 (https://joyyth.com/bot; joyyth@gmail.com)"
 )
+
+// Config limits the crawl and sets the HTTP User-Agent. Zero fields use defaults from NewCrawler.
+type Config struct {
+	AllowedHost string
+	MaxPages    int
+	UserAgent   string
+}
 
 type Crawler struct {
 	client   *http.Client
+	cfg      Config
 	visited  map[string]bool
 	maxDepth int
 	pages    []model.Document
@@ -49,14 +58,17 @@ type crawlStats struct {
 	nonOK         atomic.Int32
 }
 
-type crawlStatsSnapshot struct {
-	started       int32
-	succeeded     int32
-	requestErrors int32
-	nonOK         int32
-}
+func NewCrawler(depth int, cfg Config) *Crawler {
+	if cfg.AllowedHost == "" {
+		cfg.AllowedHost = defaultAllowedHost
+	}
+	if cfg.MaxPages == 0 {
+		cfg.MaxPages = defaultMaxPages
+	}
+	if cfg.UserAgent == "" {
+		cfg.UserAgent = defaultUserAgent
+	}
 
-func NewCrawler(depth int) *Crawler {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConns = 100
 	transport.MaxIdleConnsPerHost = 100
@@ -67,11 +79,12 @@ func NewCrawler(depth int) *Crawler {
 			Timeout:   10 * time.Second,
 			Transport: transport,
 		},
+		cfg:      cfg,
 		maxDepth: depth,
 	}
 }
 
-func normalizeCrawlURL(rawURL string) (string, error) {
+func (c *Crawler) normalizeCrawlURL(rawURL string) (string, error) {
 	normalizedURL, err := utils.NormalizeURL(rawURL)
 	if err != nil {
 		return "", err
@@ -82,7 +95,7 @@ func normalizeCrawlURL(rawURL string) (string, error) {
 		return "", err
 	}
 
-	if parsed.Host == allowedHost {
+	if parsed.Host == c.cfg.AllowedHost {
 		parsed.Scheme = "https"
 		parsed.RawQuery = ""
 	}
@@ -90,27 +103,37 @@ func normalizeCrawlURL(rawURL string) (string, error) {
 	return parsed.String(), nil
 }
 
-func (c *Crawler) Crawl(startURL string, numWorkers int) {
+func (c *Crawler) Crawl(ctx context.Context, startURL string, numWorkers int) {
 	if numWorkers <= 0 {
 		numWorkers = 1
 	}
 	crawlStart := time.Now()
 
-	normalizedURL, err := normalizeCrawlURL(startURL)
+	normalizedURL, err := c.normalizeCrawlURL(startURL)
 	if err != nil {
 		slog.Info("normalize start URL failed", "url", startURL, "error", err)
 		return
 	}
+	if !c.isAllowed(normalizedURL) {
+		slog.Info("start URL is not allowed", "url", startURL)
+		return
+	}
 
-	jobs := make(chan queueItem, maxPages)
-	results := make(chan workerResult, maxPages)
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
+
+	jobs := make(chan queueItem, c.cfg.MaxPages)
+	results := make(chan workerResult, c.cfg.MaxPages)
 
 	var workerWG sync.WaitGroup
 	for i := 0; i < numWorkers; i++ {
 		workerWG.Add(1)
 		go func() {
 			defer workerWG.Done()
-			c.worker(jobs, results)
+			c.worker(ctx, jobs, results)
 		}()
 	}
 	go func() {
@@ -133,11 +156,11 @@ func (c *Crawler) Crawl(startURL string, numWorkers int) {
 			return
 		}
 		for _, link := range result.links {
-			normalizedLink, err := normalizeCrawlURL(link)
-			if err != nil || !isAllowed(normalizedLink) || c.visited[normalizedLink] {
+			normalizedLink, err := c.normalizeCrawlURL(link)
+			if err != nil || !c.isAllowed(normalizedLink) || c.visited[normalizedLink] {
 				continue
 			}
-			if c.pageCount() >= maxPages {
+			if c.pageCount() >= c.cfg.MaxPages {
 				break
 			}
 			c.visited[normalizedLink] = true
@@ -146,13 +169,16 @@ func (c *Crawler) Crawl(startURL string, numWorkers int) {
 	}
 
 	for len(queue) > 0 || pending > 0 {
-		if c.pageCount() >= maxPages {
+		if c.pageCount() >= c.cfg.MaxPages {
 			queue = nil
 		}
 
 	drainResults:
 		for pending > 0 {
 			select {
+			case <-ctx.Done():
+				queue = nil
+				break drainResults
 			case result := <-results:
 				pending--
 				handleResult(result)
@@ -165,13 +191,19 @@ func (c *Crawler) Crawl(startURL string, numWorkers int) {
 			if pending == 0 {
 				break
 			}
-			result := <-results
-			pending--
-			handleResult(result)
+			select {
+			case <-ctx.Done():
+				queue = nil
+			case result := <-results:
+				pending--
+				handleResult(result)
+			}
 			continue
 		}
 
 		select {
+		case <-ctx.Done():
+			queue = nil
 		case result := <-results:
 			pending--
 			handleResult(result)
@@ -184,45 +216,39 @@ func (c *Crawler) Crawl(startURL string, numWorkers int) {
 	close(jobs)
 	workerWG.Wait()
 
-	stats := c.statsSnapshot()
 	slog.Info("crawl complete",
 		"duration", time.Since(crawlStart),
 		"workers", numWorkers,
 		"pages", c.pageCount(),
-		"started_fetches", stats.started,
-		"succeeded_fetches", stats.succeeded,
-		"request_errors", stats.requestErrors,
-		"non_ok_responses", stats.nonOK,
+		"started_fetches", c.stats.started.Load(),
+		"succeeded_fetches", c.stats.succeeded.Load(),
+		"request_errors", c.stats.requestErrors.Load(),
+		"non_ok_responses", c.stats.nonOK.Load(),
 	)
 }
 
-func (c *Crawler) worker(jobs chan queueItem, results chan workerResult) {
+func (c *Crawler) worker(ctx context.Context, jobs chan queueItem, results chan workerResult) {
 	for item := range jobs {
-		results <- c.fetch(item)
+		results <- c.fetch(ctx, item)
 	}
 }
-func (c *Crawler) fetch(item queueItem) workerResult {
-	if item.depth > c.maxDepth || !isAllowed(item.URL) {
-		return workerResult{
-			item: item,
-		}
-	}
 
+func (c *Crawler) fetch(ctx context.Context, item queueItem) workerResult {
 	start := time.Now()
-	c.recordFetchStart()
+	c.stats.started.Add(1)
 
-	req, err := http.NewRequest(http.MethodGet, item.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, item.URL, nil)
 	if err != nil {
-		c.recordRequestError()
+		c.stats.requestErrors.Add(1)
 		return workerResult{item: item}
 	}
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", c.cfg.UserAgent)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		c.recordRequestError()
+		c.stats.requestErrors.Add(1)
 		slog.Info("fetch failed",
 			"url", item.URL,
 			"depth", item.depth,
@@ -235,7 +261,7 @@ func (c *Crawler) fetch(item queueItem) workerResult {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		c.recordNonOK()
+		c.stats.nonOK.Add(1)
 		slog.Info("fetch skipped",
 			"url", item.URL,
 			"depth", item.depth,
@@ -248,9 +274,9 @@ func (c *Crawler) fetch(item queueItem) workerResult {
 		}
 	}
 
-	links, title, content := extractLinks(resp.Body)
+	links, title, content := extractLinks(resp.Body, c.cfg.AllowedHost)
 	resp.Body.Close()
-	c.recordFetchSuccess()
+	c.stats.succeeded.Add(1)
 	slog.Info("fetch complete",
 		"url", item.URL,
 		"depth", item.depth,
@@ -268,7 +294,6 @@ func (c *Crawler) fetch(item queueItem) workerResult {
 		links: links,
 		ok:    true,
 	}
-
 }
 
 func (c *Crawler) pageCount() int {
@@ -280,47 +305,22 @@ func (c *Crawler) pageCount() int {
 func (c *Crawler) tryAddPage(doc model.Document) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if len(c.pages) >= maxPages {
+	if len(c.pages) >= c.cfg.MaxPages {
 		return false
 	}
 	c.pages = append(c.pages, doc)
 	return true
 }
 
-func (c *Crawler) recordFetchStart() {
-	c.stats.started.Add(1)
-}
-
-func (c *Crawler) recordFetchSuccess() {
-	c.stats.succeeded.Add(1)
-}
-
-func (c *Crawler) recordRequestError() {
-	c.stats.requestErrors.Add(1)
-}
-
-func (c *Crawler) recordNonOK() {
-	c.stats.nonOK.Add(1)
-}
-
-func (c *Crawler) statsSnapshot() crawlStatsSnapshot {
-	return crawlStatsSnapshot{
-		started:       c.stats.started.Load(),
-		succeeded:     c.stats.succeeded.Load(),
-		requestErrors: c.stats.requestErrors.Load(),
-		nonOK:         c.stats.nonOK.Load(),
-	}
-}
-
-func isAllowed(rawURL string) bool {
+func (c *Crawler) isAllowed(rawURL string) bool {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return false
 	}
-	return parsed.Host == allowedHost
+	return parsed.Host == c.cfg.AllowedHost
 }
 
-func extractLinks(body io.Reader) ([]string, string, string) {
+func extractLinks(body io.Reader, allowedHost string) ([]string, string, string) {
 	var links []string
 	var textBuilder strings.Builder
 	var title string

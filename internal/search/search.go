@@ -10,7 +10,7 @@ import (
 	"github.com/joyyth/search-engine-v1.0/internal/utils"
 )
 
-var maxResults = 20
+const maxResults = 20
 
 type Result struct {
     Document model.Document
