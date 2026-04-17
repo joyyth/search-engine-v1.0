@@ -1,6 +1,7 @@
 package api
 
 import (
+	"embed"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -8,6 +9,9 @@ import (
 
 	"github.com/joyyth/search-engine-v1.0/internal/search"
 )
+
+//go:embed web/index.html
+var webFiles embed.FS
 
 type Server struct {
 	search *search.Search
@@ -20,6 +24,7 @@ func NewServer(search *search.Search) *Server {
 		mux:    http.NewServeMux(),
 	}
 
+	srv.mux.HandleFunc("GET /{$}", srv.IndexHandler)
 	srv.mux.HandleFunc("GET /search", srv.SearchHandler)
 	srv.mux.HandleFunc("GET /health", srv.HealthHandler)
 	srv.mux.HandleFunc("GET /stats", srv.StatsHandler)
@@ -49,6 +54,19 @@ func (s *Server) SearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func (s *Server) IndexHandler(w http.ResponseWriter, r *http.Request) {
+	content, err := webFiles.ReadFile("web/index.html")
+	if err != nil {
+		http.Error(w, "Failed to load UI", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(content)
+}
+
 func (s *Server) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -64,25 +82,25 @@ func (s *Server) StatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) withCORS(next http.Handler) http.Handler{
-	return http.HandlerFunc( func(w http.ResponseWriter, r *http.Request){
+func (s *Server) withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-        w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-        w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-        next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r)
 	})
 }
 
-func (s *Server) withLogging(next http.Handler) http.Handler{
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request){
+func (s *Server) withLogging(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-	    next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r)
 		duration := time.Since(start)
 		slog.Info("request", "method", r.Method, "url", r.URL.Path, "remote_addr", r.RemoteAddr, "duration", duration)
-	
+
 	})
 }

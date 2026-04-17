@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Search</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0a0b;
+      --surface: #121214;
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #ececee;
+      --text-secondary: #9b9ba1;
+      --text-muted: #6e6e73;
+      --accent: #6d9eff;
+      --accent-hover: #8eb4ff;
+      --danger: #f87171;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .page {
+      width: min(100%, 43rem);
+      margin: 0 auto;
+      padding: 4.5rem 1.25rem 3rem;
+    }
+
+    .wordmark {
+      margin: 0 0 1rem;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .search-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    .search-input,
+    .search-button {
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      min-height: 44px;
+      font: inherit;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 0 0.9rem;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 1rem;
+      outline: none;
+    }
+
+    .search-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .search-input:focus,
+    .search-button:focus-visible {
+      outline: 2px solid rgba(109, 158, 255, 0.35);
+      outline-offset: 2px;
+    }
+
+    .search-button {
+      padding: 0 1rem;
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+      transition: background-color 150ms ease;
+    }
+
+    .search-button:hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .search-button:disabled {
+      cursor: wait;
+      opacity: 0.7;
+    }
+
+    .meta,
+    .error {
+      margin: 0.9rem 0 0;
+      font-size: 0.78rem;
+      line-height: 1.5;
+    }
+
+    .meta {
+      color: var(--text-muted);
+    }
+
+    .error {
+      color: var(--danger);
+    }
+
+    .results {
+      margin-top: 1.5rem;
+    }
+
+    .result {
+      padding: 0;
+      animation: fade-in 150ms ease;
+    }
+
+    .result + .result {
+      margin-top: 1.4rem;
+    }
+
+    .result-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
+    .result-title a {
+      text-decoration: none;
+    }
+
+    .result-title a:hover {
+      color: var(--accent-hover);
+    }
+
+    .result-url {
+      display: block;
+      margin-top: 0.22rem;
+      color: var(--accent);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.78rem;
+      line-height: 1.4;
+      text-decoration: none;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .result-url:hover {
+      color: var(--accent-hover);
+    }
+
+    .result-snippet,
+    .empty-state {
+      margin: 0.35rem 0 0;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    .result-snippet {
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .empty-state {
+      color: var(--text-muted);
+    }
+
+    @keyframes fade-in {
+      from {
+        opacity: 0;
+        transform: translateY(2px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 560px) {
+      .page {
+        padding-top: 3rem;
+      }
+
+      .search-form {
+        grid-template-columns: 1fr;
+      }
+
+      .search-button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <p class="wordmark">Search</p>
+    <form class="search-form" id="search-form">
+      <input
+        id="query"
+        class="search-input"
+        type="search"
+        name="q"
+        placeholder="Search indexed pages"
+        autocomplete="off"
+        spellcheck="false"
+        aria-label="Search indexed pages"
+      >
+      <button class="search-button" type="submit" id="search-button">Go</button>
+    </form>
+    <p class="meta" id="meta">Search indexed pages</p>
+    <p class="error" id="error" hidden></p>
+    <section class="results" id="results" aria-live="polite" aria-label="Search results"></section>
+  </main>
+
+  <script>
+    const form = document.getElementById("search-form");
+    const queryInput = document.getElementById("query");
+    const searchButton = document.getElementById("search-button");
+    const meta = document.getElementById("meta");
+    const error = document.getElementById("error");
+    const results = document.getElementById("results");
+
+    function setMeta(text) {
+      meta.textContent = text;
+    }
+
+    function clearFeedback() {
+      error.hidden = true;
+      error.textContent = "";
+      results.replaceChildren();
+    }
+
+    function setEmptyState(text) {
+      const message = document.createElement("p");
+      message.className = "empty-state";
+      message.textContent = text;
+      results.replaceChildren(message);
+    }
+
+    function createResult(result) {
+      const documentData = result.Document || result.document || {};
+      const snippetText = result.Snippet || result.snippet || "";
+      const titleText = documentData.title || documentData.url || "Untitled result";
+      const urlText = documentData.url || "#";
+
+      const item = document.createElement("article");
+      item.className = "result";
+
+      const title = document.createElement("h2");
+      title.className = "result-title";
+
+      const titleLink = document.createElement("a");
+      titleLink.href = urlText;
+      titleLink.target = "_blank";
+      titleLink.rel = "noopener";
+      titleLink.textContent = titleText;
+      title.appendChild(titleLink);
+
+      const urlLink = document.createElement("a");
+      urlLink.className = "result-url";
+      urlLink.href = urlText;
+      urlLink.target = "_blank";
+      urlLink.rel = "noopener";
+      urlLink.textContent = urlText;
+
+      const snippet = document.createElement("p");
+      snippet.className = "result-snippet";
+      snippet.textContent = snippetText;
+
+      item.append(title, urlLink, snippet);
+      return item;
+    }
+
+    async function search(query, updateHistory) {
+      const trimmedQuery = query.trim();
+
+      if (!trimmedQuery) {
+        clearFeedback();
+        setMeta("Search indexed pages");
+        history.replaceState(null, "", location.pathname);
+        return;
+      }
+
+      if (updateHistory) {
+        const nextURL = new URL(location.href);
+        nextURL.searchParams.set("q", trimmedQuery);
+        history.replaceState(null, "", nextURL);
+      }
+
+      searchButton.disabled = true;
+      clearFeedback();
+      setMeta("Searching...");
+
+      try {
+        const response = await fetch("/search?q=" + encodeURIComponent(trimmedQuery), {
+          headers: {
+            Accept: "application/json"
+          }
+        });
+
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(message || "Search failed");
+        }
+
+        const data = await response.json();
+        if (!Array.isArray(data) || data.length === 0) {
+          setMeta("No results");
+          setEmptyState("No results. Try fewer words.");
+          return;
+        }
+
+        const metaText = data.length === 20
+          ? "Showing first 20 results for \"" + trimmedQuery + "\""
+          : data.length + " result" + (data.length === 1 ? "" : "s") + " for \"" + trimmedQuery + "\"";
+
+        setMeta(metaText);
+        results.replaceChildren(...data.map(createResult));
+      } catch (err) {
+        setMeta("Search indexed pages");
+        error.hidden = false;
+        error.textContent = err instanceof Error ? err.message : "Unable to search right now.";
+      } finally {
+        searchButton.disabled = false;
+      }
+    }
+
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      search(queryInput.value, true);
+    });
+
+    const initialQuery = new URLSearchParams(location.search).get("q");
+    if (initialQuery) {
+      queryInput.value = initialQuery;
+      search(initialQuery, false);
+    }
+  </script>
+</body>
+</html>
