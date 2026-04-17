@@ -1,8 +1,6 @@
 # Search Engine
 
-A concurrent web crawler, inverted-index builder, and TF·IDF search API — written from scratch in Go, with a single-binary HTTP service and an embedded web UI.
-
-Built to learn how production search actually works: a BFS crawler with a worker pool, a stemmed analyzer pipeline, postings with term frequency stored at index time, IDF computed at query time, and a ranked result feed served by `net/http` with middleware. Persistence is intentionally boring — JSON on disk behind a `Store` interface — so the interesting code (concurrency, ranking, lifecycle) stays legible. The web UI is shipped as a single HTML file compiled into the binary via `go:embed`, so `go run ./cmd -serve` produces a working search engine with zero external dependencies.
+I tried building this to learn how search engines work. I was learning Go, so I aimed it at the Go docs (pkg.go.dev/std).
 
 ---
 
@@ -58,7 +56,7 @@ Data flows **left to right, once per mode**: crawl writes `pages.json`, index re
 
 ## Quickstart
 
-Requires Go 1.22+ (`go:embed` and method-scoped `ServeMux` patterns are used). Three commands from a clean clone:
+Needs Go 1.22+. From a clean clone:
 
 ```bash
 go run ./cmd -crawl     # fetch up to 200 pages from en.wikipedia.org → data/pages.json
@@ -102,12 +100,10 @@ curl -s 'http://localhost:8082/search?q=goroutine' | jq .
 
 Errors:
 
-
 | Status | Condition               |
 | ------ | ----------------------- |
 | 400    | `q` is missing or empty |
 | 500    | JSON encoding failed    |
-
 
 ### `GET /stats`
 
@@ -123,8 +119,8 @@ curl -s http://localhost:8082/stats | jq .
   "total_terms": 28734,
   "term_stats": [
     { "term": "wikipedia", "doc_count": 198 },
-    { "term": "articl",    "doc_count": 187 },
-    { "term": "page",      "doc_count": 176 }
+    { "term": "articl", "doc_count": 187 },
+    { "term": "page", "doc_count": 176 }
   ]
 }
 ```
@@ -138,67 +134,21 @@ curl -s http://localhost:8082/health
 ```
 
 ```json
-{"status":"ok"}
+{ "status": "ok" }
 ```
 
 ### `GET /`
 
-Serves the embedded single-file web UI (dark, minimal, vanilla JS — see `internal/api/web/index.html`). The UI reads `?q=` from the URL on load, so search results are deep-linkable.
+Serves the embedded UI (`internal/api/web/index.html`). Reads `?q=` from the URL so results are linkable.
 
 ---
 
-## Docker
+## Notes
 
-A multi-stage build produces a ~10 MB static image with no Go toolchain and no shell:
-
-```dockerfile
-# Dockerfile
-FROM golang:1.22-alpine AS build
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/search-engine ./cmd
-
-FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /out/search-engine /search-engine
-EXPOSE 8082
-ENTRYPOINT ["/search-engine"]
-```
-
-Build and run the full pipeline, persisting the crawl/index to a host volume:
-
-```bash
-docker build -t search-engine .
-
-# crawl (~2 minutes on a fresh network)
-docker run --rm -v "$PWD/data:/data" -w / search-engine -crawl
-
-# index
-docker run --rm -v "$PWD/data:/data" -w / search-engine -index
-
-# serve on :8082
-docker run --rm -p 8082:8082 -v "$PWD/data:/data" -w / search-engine -serve
-```
-
-The container writes to `/data` (configured by the `docsPath`/`indexPath` constants in `cmd/main.go`), so mounting a host directory there survives restarts.
-
----
-
-## Technical highlights
-
-- **Deadlock-free worker pool orchestrator.** The BFS loop in `internal/crawler/crawler.go` uses a single `select` over `results` receive and `jobs[0]` send with a `pending` counter as the barrier. When the queue is empty the loop blocks only on `results`; when both are zero it exits cleanly. Closing `jobs` after the main loop and waiting on a `sync.WaitGroup` guarantees every worker terminates before `close(results)`.
-- **Context-cancellable crawl.** `Crawl(ctx, seed, workers)` plumbs `context.Context` into every `http.Request`, so shutdown and timeouts are first-class rather than bolted on.
-- **Lock-free fetch statistics.** `crawlStats` is four `atomic.Int32` counters (`started`, `succeeded`, `requestErrors`, `nonOK`). Workers increment without contending on the page-slice mutex; a snapshot type is used for logging so readers never observe half-updated state.
-- **TF at index, IDF at query.** `model.Posting{DocID, TF}` stores term frequency once per (doc, term). IDF is `log(1 + N/df)` computed on demand in `internal/search/search.go`, so adding documents does not require rewriting postings. The `1 +` smoothing avoids the log(1)=0 pathology where a term present in every document contributes nothing.
-- **Analyzer consistency across index and query.** Index-time (`indexer.AddDocument`) and query-time (`search.Search`) both call the same `Analyzer(text)` — lowercase → `strings.FieldsFunc` on non-letter/digit → stopword filter → Snowball English stem. There is literally one code path, so there is no drift to debug.
-- **Snippet uses the raw query, not stemmed tokens.** `BuildSnippet` receives `strings.Fields(strings.ToLower(query))` so the excerpt shows words the user actually typed, even though matching is stem-based.
-- **Atomic, crash-safe persistence.** `JSONStore.writeJSON` encodes to `path + ".tmp"`, fsyncs, closes, then `os.Rename`s. A crash mid-write cannot corrupt the previous good index.
-- `**Store` is an interface, not a package.** `internal/store/store.go` declares the contract; `JSONStore` is one implementation, a `mockStore` in `indexer_test.go` and a `testStore` in `server_test.go` are others. Swapping in BoltDB or SQLite is a new file, not a rewrite.
-- **Zero-asset binary via `go:embed`.** `internal/api/server.go` embeds `web/index.html` at compile time. `go build ./cmd` produces one file you can `scp` anywhere.
-- **CORS preflight handled correctly.** The `withCORS` middleware short-circuits `OPTIONS` with 204 before the Go 1.22 method-scoped mux can 405 it — browsers using custom headers actually work.
-- **Structured logging everywhere.** `slog` JSON handler in `main`, per-request `slog.Info` in `withLogging`, per-fetch `slog.Info` in the crawler with duration, URL, depth, and status. `grep` becomes `jq`.
-- **Tested where it matters.** `indexer` has analyzer and lookup tests; `api` has end-to-end tests driving `httptest.NewServer` against a real `Search` wired to an in-memory index — the same code path the running server uses.
+- BFS crawl with a worker pool; requests respect `context`.
+- Same analyzer for index and query (tokenize, stopwords, Snowball English stem). TF in postings, IDF at query time; snippets use the raw query.
+- JSON store with atomic replace; `Store` is an interface if you want something else later.
+- Tests cover the indexer and the HTTP API (`httptest` against the real search path).
 
 ---
 
@@ -214,44 +164,16 @@ In priority order, with the reasoning:
 6. **Crawler politeness.** `robots.txt` parsing and per-host rate limiting via `golang.org/x/time/rate`. Required for a real crawler; right now the scope is capped by `MaxPages` rather than by etiquette.
 7. **Query expansion with synonyms.** Small hand-curated synonym map applied after tokenization. Improves recall for short queries, demonstrates awareness of where pure lexical search breaks down.
 
-Things I deliberately will not do: add a heavyweight framework, adopt a persistence layer just for the sake of it, or rewrite the crawler in a "cleaner" way. The current architecture is small enough to hold in your head — that is the feature.
-
 ---
 
 ## Tech stack
 
-
-| Area                   | Choice                                                  | Reason                                                               |
-| ---------------------- | ------------------------------------------------------- | -------------------------------------------------------------------- |
-| Language               | Go 1.22+                                                | `go:embed`, method-scoped `ServeMux`, stdlib concurrency             |
-| HTTP server            | `net/http` stdlib                                       | No framework — routing, middleware, and shutdown all fit in one file |
-| HTML parsing           | `golang.org/x/net/html`                                 | Token-level walker; no CSS selectors needed for title + links + text |
-| Stemming               | `github.com/kljensen/snowball` (English)                | Small, pure-Go, standard Porter2 algorithm                           |
-| Logging                | `log/slog` (JSON handler)                               | Structured, stdlib, zero dependencies                                |
-| Concurrency primitives | `sync.Mutex`, `sync.WaitGroup`, `sync/atomic`, channels | Matches what each code path actually needs                           |
-| Persistence            | JSON files via a `Store` interface                      | Readable on disk, swappable at the interface boundary                |
-| Web UI                 | Single HTML file, vanilla JS, `go:embed`                | Ships inside the binary, no build step                               |
-| Task runner (optional) | [go-task](https://taskfile.dev) (`Taskfile.yml`)        | Not required — `go run ./cmd -serve` works standalone                |
-| Container image        | `distroless/static-debian12:nonroot`                    | Static binary, non-root by default, no shell, ~10 MB                 |
-
+| Area                   | Choice                                           | Reason                                                |
+| ---------------------- | ------------------------------------------------ | ----------------------------------------------------- |
+| Language               | Go 1.22+                                         | Learning Go                                           |
+| Task runner (optional) | [go-task](https://taskfile.dev) (`Taskfile.yml`) | Not required — `go run ./cmd -serve` works standalone |
 
 ---
-
-## Project layout
-
-```
-cmd/main.go                       flag-based entrypoint (-crawl / -index / -serve)
-internal/crawler/crawler.go       BFS worker pool, HTML walk, atomic stats
-internal/model/document.go        Document{ID,URL,Title,Content}, Posting{DocID,TF}
-internal/indexer/analyzer.go      tokenize → stopwords → Snowball stem
-internal/indexer/indexer.go       inverted index + stats
-internal/search/search.go         TF·IDF ranking + snippet assembly
-internal/store/store.go           Store interface
-internal/store/jsonstore.go       JSON impl with atomic tmp+rename writes
-internal/api/server.go            HTTP API, CORS + logging middleware, go:embed UI
-internal/api/web/index.html       single-file web UI
-internal/utils/                   NormalizeURL, BuildSnippet
-```
 
 ## License
 
