@@ -40,9 +40,9 @@ tasks:
       - go build {{.GO_FLAGS}} -o {{.BIN}} {{.MAIN}}
 
   run:
-    desc: Run app with extra CLI args (e.g. task run -- -serve)
+    desc: Run web UI (go run ./cmd -serve); override with task run -- -crawl / -index / -serve
     cmds:
-      - go run {{.MAIN}} {{.CLI_ARGS}}
+      - go run {{.MAIN}} {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}-serve{{end}}
 
   run:crawl:
     desc: Run crawler (-crawl)
@@ -55,7 +55,7 @@ tasks:
       - go run {{.MAIN}} -index
 
   run:serve:
-    desc: Start HTTP API (-serve)
+    desc: Start web UI / HTTP API (go run ./cmd -serve)
     cmds:
       - go run {{.MAIN}} -serve
 
@@ -68,11 +68,6 @@ tasks:
     desc: Run tests verbose
     cmds:
       - go test -v -race ./...
-
-  bench:
-    desc: Run benchmarks (if any)
-    cmds:
-      - go test -bench=. -benchmem ./...
 
   clean:
     desc: Remove bin/ and coverage.out
