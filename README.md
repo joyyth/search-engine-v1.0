@@ -102,10 +102,12 @@ curl -s 'http://localhost:8082/search?q=goroutine' | jq .
 
 Errors:
 
-| Status | Condition                  |
-| ------ | -------------------------- |
-| 400    | `q` is missing or empty    |
-| 500    | JSON encoding failed       |
+
+| Status | Condition               |
+| ------ | ----------------------- |
+| 400    | `q` is missing or empty |
+| 500    | JSON encoding failed    |
+
 
 ### `GET /stats`
 
@@ -192,7 +194,7 @@ The container writes to `/data` (configured by the `docsPath`/`indexPath` consta
 - **Analyzer consistency across index and query.** Index-time (`indexer.AddDocument`) and query-time (`search.Search`) both call the same `Analyzer(text)` — lowercase → `strings.FieldsFunc` on non-letter/digit → stopword filter → Snowball English stem. There is literally one code path, so there is no drift to debug.
 - **Snippet uses the raw query, not stemmed tokens.** `BuildSnippet` receives `strings.Fields(strings.ToLower(query))` so the excerpt shows words the user actually typed, even though matching is stem-based.
 - **Atomic, crash-safe persistence.** `JSONStore.writeJSON` encodes to `path + ".tmp"`, fsyncs, closes, then `os.Rename`s. A crash mid-write cannot corrupt the previous good index.
-- **`Store` is an interface, not a package.** `internal/store/store.go` declares the contract; `JSONStore` is one implementation, a `mockStore` in `indexer_test.go` and a `testStore` in `server_test.go` are others. Swapping in BoltDB or SQLite is a new file, not a rewrite.
+- `**Store` is an interface, not a package.** `internal/store/store.go` declares the contract; `JSONStore` is one implementation, a `mockStore` in `indexer_test.go` and a `testStore` in `server_test.go` are others. Swapping in BoltDB or SQLite is a new file, not a rewrite.
 - **Zero-asset binary via `go:embed`.** `internal/api/server.go` embeds `web/index.html` at compile time. `go build ./cmd` produces one file you can `scp` anywhere.
 - **CORS preflight handled correctly.** The `withCORS` middleware short-circuits `OPTIONS` with 204 before the Go 1.22 method-scoped mux can 405 it — browsers using custom headers actually work.
 - **Structured logging everywhere.** `slog` JSON handler in `main`, per-request `slog.Info` in `withLogging`, per-fetch `slog.Info` in the crawler with duration, URL, depth, and status. `grep` becomes `jq`.
@@ -218,18 +220,20 @@ Things I deliberately will not do: add a heavyweight framework, adopt a persiste
 
 ## Tech stack
 
-| Area                     | Choice                                                    | Reason                                                                |
-| ------------------------ | --------------------------------------------------------- | --------------------------------------------------------------------- |
-| Language                 | Go 1.22+                                                  | `go:embed`, method-scoped `ServeMux`, stdlib concurrency              |
-| HTTP server              | `net/http` stdlib                                         | No framework — routing, middleware, and shutdown all fit in one file  |
-| HTML parsing             | `golang.org/x/net/html`                                   | Token-level walker; no CSS selectors needed for title + links + text  |
-| Stemming                 | `github.com/kljensen/snowball` (English)                  | Small, pure-Go, standard Porter2 algorithm                            |
-| Logging                  | `log/slog` (JSON handler)                                 | Structured, stdlib, zero dependencies                                 |
-| Concurrency primitives   | `sync.Mutex`, `sync.WaitGroup`, `sync/atomic`, channels   | Matches what each code path actually needs                            |
-| Persistence              | JSON files via a `Store` interface                        | Readable on disk, swappable at the interface boundary                 |
-| Web UI                   | Single HTML file, vanilla JS, `go:embed`                  | Ships inside the binary, no build step                                |
-| Task runner (optional)   | [go-task](https://taskfile.dev) (`Taskfile.yml`)          | Not required — `go run ./cmd -serve` works standalone                 |
-| Container image          | `distroless/static-debian12:nonroot`                      | Static binary, non-root by default, no shell, ~10 MB                  |
+
+| Area                   | Choice                                                  | Reason                                                               |
+| ---------------------- | ------------------------------------------------------- | -------------------------------------------------------------------- |
+| Language               | Go 1.22+                                                | `go:embed`, method-scoped `ServeMux`, stdlib concurrency             |
+| HTTP server            | `net/http` stdlib                                       | No framework — routing, middleware, and shutdown all fit in one file |
+| HTML parsing           | `golang.org/x/net/html`                                 | Token-level walker; no CSS selectors needed for title + links + text |
+| Stemming               | `github.com/kljensen/snowball` (English)                | Small, pure-Go, standard Porter2 algorithm                           |
+| Logging                | `log/slog` (JSON handler)                               | Structured, stdlib, zero dependencies                                |
+| Concurrency primitives | `sync.Mutex`, `sync.WaitGroup`, `sync/atomic`, channels | Matches what each code path actually needs                           |
+| Persistence            | JSON files via a `Store` interface                      | Readable on disk, swappable at the interface boundary                |
+| Web UI                 | Single HTML file, vanilla JS, `go:embed`                | Ships inside the binary, no build step                               |
+| Task runner (optional) | [go-task](https://taskfile.dev) (`Taskfile.yml`)        | Not required — `go run ./cmd -serve` works standalone                |
+| Container image        | `distroless/static-debian12:nonroot`                    | Static binary, non-root by default, no shell, ~10 MB                 |
+
 
 ---
 
@@ -251,4 +255,4 @@ internal/utils/                   NormalizeURL, BuildSnippet
 
 ## License
 
-MIT
+[MIT](LICENSE) — Copyright (c) 2026 Tanvir Hassan Joy.
