@@ -64,6 +64,7 @@ func writeJSON(path string, v any) error {
 	f.Sync()
 	f.Close()
 	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
 		return fmt.Errorf("renaming temporary file: %w", err)
 	}
 	return nil

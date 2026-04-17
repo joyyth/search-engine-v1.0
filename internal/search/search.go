@@ -41,7 +41,7 @@ func (s *Search) Search(query string) []model.Document {
 	tokens := indexer.Analyzer(query)
 
 	scores := make(map[int]float64)
-	n := float64(s.indexer.Stats().TotalDocuments)
+	n := float64(s.indexer.DocCount())
 	if n == 0 {
         return nil
     }
@@ -56,7 +56,7 @@ func (s *Search) Search(query string) []model.Document {
 		}
 	}
 	if len(scores) == 0 {
-		return []model.Document{}
+		return nil
 	}
 
 	type scoredDocument struct {
