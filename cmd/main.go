@@ -22,7 +22,7 @@ import (
 const (
 	docsPath  = "data/pages.json"
 	indexPath = "data/index.json"
-	startURL  = "https://en.wikipedia.org/wiki/Main_Page"
+	startURL  = "https://pkg.go.dev/std"
 )
 
 func main() {
@@ -60,11 +60,12 @@ func main() {
 func runCrawl(store store.Store) {
 	start := time.Now()
 	crawler := crawler.NewCrawler(3, crawler.Config{
-		AllowedHost: "en.wikipedia.org",
-		MaxPages:    200,
-		UserAgent:   "SearchEngineV1/0.1 (https://joyyth.com/bot; joyyth@gmail.com)",
+		AllowedHost:       "pkg.go.dev",
+		MaxPages:          200,
+		UserAgent:         "SearchEngineV1/0.1 (https://joyyth.com/bot; joyyth@gmail.com)",
+		RequestsPerSecond: 2,
 	})
-	crawler.Crawl(context.Background(), startURL, 10)
+	crawler.Crawl(context.Background(), startURL, 4)
 	crawlDuration := time.Since(start)
 	pages := crawler.GetPages()
 	docs := make([]model.Document, 0, len(pages))

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -14,12 +15,14 @@ import (
 	"github.com/joyyth/search-engine-v1.0/internal/model"
 	"github.com/joyyth/search-engine-v1.0/internal/utils"
 	"golang.org/x/net/html"
+	"golang.org/x/time/rate"
 )
 
 const (
 	defaultAllowedHost = "en.wikipedia.org"
 	defaultMaxPages    = 200
 	defaultUserAgent   = "SearchEngineV1/0.1 (https://joyyth.com/bot; joyyth@gmail.com)"
+	max429Retries      = 8
 )
 
 // Config limits the crawl and sets the HTTP User-Agent. Zero fields use defaults from NewCrawler.
@@ -29,11 +32,14 @@ type Config struct {
 	MaxPages    int
 	UserAgent   string
 	HTTPClient  *http.Client
+	// RequestsPerSecond limits average request rate across all workers (0 = no limit).
+	RequestsPerSecond float64
 }
 
 type Crawler struct {
 	client   *http.Client
 	cfg      Config
+	limiter  *rate.Limiter
 	visited  map[string]bool
 	maxDepth int
 	pages    []model.Document
@@ -83,9 +89,22 @@ func NewCrawler(depth int, cfg Config) *Crawler {
 		}
 	}
 
+	var limiter *rate.Limiter
+	if cfg.RequestsPerSecond > 0 {
+		burst := int(cfg.RequestsPerSecond + 0.999)
+		if burst < 1 {
+			burst = 1
+		}
+		if burst > 10 {
+			burst = 10
+		}
+		limiter = rate.NewLimiter(rate.Limit(cfg.RequestsPerSecond), burst)
+	}
+
 	return &Crawler{
 		client:   client,
 		cfg:      cfg,
+		limiter:  limiter,
 		maxDepth: depth,
 	}
 }
@@ -241,65 +260,143 @@ func (c *Crawler) worker(ctx context.Context, jobs chan queueItem, results chan 
 
 func (c *Crawler) fetch(ctx context.Context, item queueItem) workerResult {
 	start := time.Now()
-	c.stats.started.Add(1)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, item.URL, nil)
-	if err != nil {
-		c.stats.requestErrors.Add(1)
-		return workerResult{item: item}
-	}
-	req.Header.Set("User-Agent", c.cfg.UserAgent)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		c.stats.requestErrors.Add(1)
-		slog.Info("fetch failed",
-			"url", item.URL,
-			"depth", item.depth,
-			"duration", time.Since(start),
-			"error", err,
-		)
-		return workerResult{
-			item: item,
+	for attempt := 0; attempt < max429Retries; attempt++ {
+		if attempt > 0 {
+			slog.Info("fetch retry after rate limit",
+				"url", item.URL,
+				"depth", item.depth,
+				"attempt", attempt,
+			)
 		}
-	}
 
-	if resp.StatusCode != http.StatusOK {
-		c.stats.nonOK.Add(1)
-		slog.Info("fetch skipped",
-			"url", item.URL,
-			"depth", item.depth,
-			"status", resp.StatusCode,
-			"duration", time.Since(start),
-		)
+		c.stats.started.Add(1)
+
+		if c.limiter != nil {
+			if err := c.limiter.Wait(ctx); err != nil {
+				return workerResult{item: item}
+			}
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, item.URL, nil)
+		if err != nil {
+			c.stats.requestErrors.Add(1)
+			return workerResult{item: item}
+		}
+		req.Header.Set("User-Agent", c.cfg.UserAgent)
+		req.Header.Set("Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+
+		resp, err := c.client.Do(req)
+		if err != nil {
+			c.stats.requestErrors.Add(1)
+			slog.Info("fetch failed",
+				"url", item.URL,
+				"depth", item.depth,
+				"duration", time.Since(start),
+				"error", err,
+			)
+			return workerResult{item: item}
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			links, title, content := extractLinks(resp.Body, c.cfg.AllowedHost)
+			resp.Body.Close()
+			c.stats.succeeded.Add(1)
+			slog.Info("fetch complete",
+				"url", item.URL,
+				"depth", item.depth,
+				"status", resp.StatusCode,
+				"links", len(links),
+				"duration", time.Since(start),
+			)
+			return workerResult{
+				item: item,
+				doc: model.Document{
+					URL:     item.URL,
+					Title:   title,
+					Content: content,
+				},
+				links: links,
+				ok:    true,
+			}
+		}
+
+		status := resp.StatusCode
+		retryAfterHdr := resp.Header.Get("Retry-After")
+		_, _ = io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
-		return workerResult{
-			item: item,
+
+		if status != http.StatusTooManyRequests && status != http.StatusServiceUnavailable {
+			c.stats.nonOK.Add(1)
+			slog.Info("fetch skipped",
+				"url", item.URL,
+				"depth", item.depth,
+				"status", status,
+				"duration", time.Since(start),
+			)
+			return workerResult{item: item}
+		}
+
+		if attempt == max429Retries-1 {
+			c.stats.nonOK.Add(1)
+			slog.Info("fetch skipped",
+				"url", item.URL,
+				"depth", item.depth,
+				"status", status,
+				"duration", time.Since(start),
+				"note", "rate limited, retries exhausted",
+			)
+			return workerResult{item: item}
+		}
+
+		backoff := retryBackoffAfterRateLimit(attempt)
+		if d := parseRetryAfter(retryAfterHdr); d > backoff {
+			backoff = d
+		}
+		const maxSleep = 2 * time.Minute
+		if backoff > maxSleep {
+			backoff = maxSleep
+		}
+
+		select {
+		case <-ctx.Done():
+			return workerResult{item: item}
+		case <-time.After(backoff):
 		}
 	}
 
-	links, title, content := extractLinks(resp.Body, c.cfg.AllowedHost)
-	resp.Body.Close()
-	c.stats.succeeded.Add(1)
-	slog.Info("fetch complete",
-		"url", item.URL,
-		"depth", item.depth,
-		"status", resp.StatusCode,
-		"links", len(links),
-		"duration", time.Since(start),
-	)
-	return workerResult{
-		item: item,
-		doc: model.Document{
-			URL:     item.URL,
-			Title:   title,
-			Content: content,
-		},
-		links: links,
-		ok:    true,
+	return workerResult{item: item}
+}
+
+func parseRetryAfter(v string) time.Duration {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
 	}
+	if sec, err := strconv.Atoi(v); err == nil {
+		return time.Duration(sec) * time.Second
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		d := time.Until(t)
+		if d < 0 {
+			return 0
+		}
+		return d
+	}
+	return 0
+}
+
+func retryBackoffAfterRateLimit(attempt int) time.Duration {
+	if attempt < 0 {
+		attempt = 0
+	}
+	const capD = 60 * time.Second
+	d := time.Duration(1<<uint(attempt)) * time.Second
+	if d > capD {
+		d = capD
+	}
+	return d
 }
 
 func (c *Crawler) pageCount() int {

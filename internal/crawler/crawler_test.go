@@ -111,6 +111,38 @@ func TestExtractLinks(t *testing.T) {
 	}
 }
 
+func TestParseRetryAfter(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		in   string
+		want time.Duration
+	}{
+		{"", 0},
+		{"  30  ", 30 * time.Second},
+		{"0", 0},
+	}
+	for _, tt := range tests {
+		if got := parseRetryAfter(tt.in); got != tt.want {
+			t.Fatalf("parseRetryAfter(%q) = %v, want %v", tt.in, got, tt.want)
+		}
+	}
+	future := time.Now().UTC().Add(50 * time.Second)
+	got := parseRetryAfter(future.Format(http.TimeFormat))
+	if got < 45*time.Second || got > 55*time.Second {
+		t.Fatalf("parseRetryAfter(HTTP-date) = %v, want ~50s", got)
+	}
+}
+
+func TestRetryBackoffAfterRateLimit(t *testing.T) {
+	t.Parallel()
+	if d := retryBackoffAfterRateLimit(0); d != time.Second {
+		t.Fatalf("attempt 0: %v", d)
+	}
+	if d := retryBackoffAfterRateLimit(10); d != 60*time.Second {
+		t.Fatalf("capped: %v", d)
+	}
+}
+
 func TestExtractLinks_ParseError(t *testing.T) {
 	t.Parallel()
 	links, title, content := extractLinks(strings.NewReader(""), "example.com")
