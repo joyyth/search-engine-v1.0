@@ -32,7 +32,7 @@ func NewIndexer(s store.Store) *Indexer {
 	}
 }
 
-// Lookup returns document IDs for a token and whether the token exists in the index.
+// Lookup returns postings for a token 
 func (idx *Indexer) Lookup(token string) ([]model.Posting, bool) {
 	ids, ok := idx.index[token]
 	return ids, ok

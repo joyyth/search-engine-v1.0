@@ -23,10 +23,12 @@ const (
 )
 
 // Config limits the crawl and sets the HTTP User-Agent. Zero fields use defaults from NewCrawler.
+// HTTPClient, when set, is used instead of the default client (e.g. httptest.NewTLSServer's Client).
 type Config struct {
 	AllowedHost string
 	MaxPages    int
 	UserAgent   string
+	HTTPClient  *http.Client
 }
 
 type Crawler struct {
@@ -69,16 +71,20 @@ func NewCrawler(depth int, cfg Config) *Crawler {
 		cfg.UserAgent = defaultUserAgent
 	}
 
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.MaxIdleConns = 100
-	transport.MaxIdleConnsPerHost = 100
-	transport.MaxConnsPerHost = 100
-
-	return &Crawler{
-		client: &http.Client{
+	client := cfg.HTTPClient
+	if client == nil {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.MaxIdleConns = 100
+		transport.MaxIdleConnsPerHost = 100
+		transport.MaxConnsPerHost = 100
+		client = &http.Client{
 			Timeout:   10 * time.Second,
 			Transport: transport,
-		},
+		}
+	}
+
+	return &Crawler{
+		client:   client,
 		cfg:      cfg,
 		maxDepth: depth,
 	}
