@@ -31,14 +31,20 @@ func (s *Search) SearchWithSnippets(query string) ([]Result, int) {
 	for i, doc := range docs {
 		results[i] = Result{
 			Document: doc,
-			Snippet:  utils.BuildSnippet(rawTokens, doc.Content),
+			Snippet:  utils.BuildSnippet(rawTokens, snippetSource(doc.Title, doc.Content)),
 		}
 	}
 	return results, total
 }
 
 func (s *Search) Search(query string) ([]model.Document, int) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, 0
+	}
+
 	tokens := indexer.Analyzer(query)
+	rawTerms := indexer.Normalize(query)
 
 	scores := make(map[int]float64)
 	n := float64(s.indexer.DocCount())
@@ -55,8 +61,30 @@ func (s *Search) Search(query string) ([]model.Document, int) {
 			scores[p.DocID] += p.TF * idf
 		}
 	}
+
+	for id := 0; id < s.indexer.DocCount(); id++ {
+		if _, has := scores[id]; has {
+			continue
+		}
+		doc, ok := s.indexer.GetDocument(id)
+		if !ok {
+			continue
+		}
+		if urlPathMatchesQuery(doc.URL, tokens, rawTerms) {
+			scores[id] = urlSegmentBoost * 0.3
+		}
+	}
+
 	if len(scores) == 0 {
 		return nil, 0
+	}
+
+	for id := range scores {
+		doc, ok := s.indexer.GetDocument(id)
+		if !ok {
+			continue
+		}
+		scores[id] += relevanceBoost(doc, query, tokens)
 	}
 
 	type scoredDocument struct {

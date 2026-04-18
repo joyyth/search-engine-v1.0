@@ -40,9 +40,14 @@ func stem(tokens []string) []string {
 	return stemmed
 }
 
-func Analyzer(text string) []string {
+func Normalize(text string) []string {
 	tokenized := tokenize(text)
 	filtered := filterStopWords(tokenized)
-	stemmed := stem(filtered)
+	return filtered
+}
+
+func Analyzer(text string) []string {
+	normalized := Normalize(text)
+	stemmed := stem(normalized)
 	return stemmed
 }

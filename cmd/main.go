@@ -69,8 +69,9 @@ func runCrawl(store store.Store) {
 	crawlDuration := time.Since(start)
 	pages := crawler.GetPages()
 	docs := make([]model.Document, 0, len(pages))
-	for _, p := range pages {
+	for i, p := range pages {
 		docs = append(docs, model.Document{
+			ID:      i,
 			URL:     p.URL,
 			Title:   p.Title,
 			Content: p.Content,
