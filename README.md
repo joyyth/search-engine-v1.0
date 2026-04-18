@@ -143,12 +143,18 @@ Serves the embedded UI (`internal/api/web/index.html`). Reads `?q=` from the URL
 
 ---
 
-## Notes
+## Technical specifications
 
-- BFS crawl with a worker pool; requests respect `context`.
-- Same analyzer for index and query (tokenize, stopwords, Snowball English stem). TF in postings, IDF at query time; snippets use the raw query.
-- JSON store with atomic replace; `Store` is an interface if you want something else later.
-- Tests cover the indexer and the HTTP API (`httptest` against the real search path).
+| Area                    | Details                                                                                                                                                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Concurrency (crawl)** | Fixed-size worker pool; BFS queue and `visited` / page list protected with `sync.Mutex`; per-request stats on `atomic.Int32`; `context.Context` on HTTP fetches.                                                      |
+| **Concurrency (index)** | `Indexer.AddDocument` is **not** safe for parallel calls (single-threaded during `-index`).                                                                                                                           |
+| **Concurrency (serve)** | Index and document slice are loaded once, then only read; HTTP handlers call search concurrently with no writers on that data.                                                                                        |
+| **Ranking**             | TF·IDF: per query term, `idf = log(1 + N/df)` (`N` = corpus size, `df` = posting-list length); score = Σ (`tf` × `idf`) over terms; `tf` is normalized term frequency in the document at index time. Top 20 by score. |
+| **Retrieval**           | Inverted index: `term → []Posting{DocID, TF}`; same analyzer on index and query (lowercase, alphanumeric tokenizer, stopwords, Snowball English stem).                                                                |
+| **Snippets**            | Built from lowercased raw query tokens (not stems) against full document text.                                                                                                                                        |
+| **Persistence**         | `data/pages.json`, `data/index.json`; JSON writes via temp file + rename.                                                                                                                                             |
+| **HTTP**                | `net/http`, Go 1.22 method patterns; CORS middleware; JSON `log/slog`.                                                                                                                                                |
 
 ---
 
@@ -171,6 +177,7 @@ In priority order, with the reasoning:
 | Area                   | Choice                                           | Reason                                                |
 | ---------------------- | ------------------------------------------------ | ----------------------------------------------------- |
 | Language               | Go 1.22+                                         | Learning Go                                           |
+| Web interface          | Single HTML file, vanilla JS, `go:embed`         |
 | Task runner (optional) | [go-task](https://taskfile.dev) (`Taskfile.yml`) | Not required — `go run ./cmd -serve` works standalone |
 
 ---

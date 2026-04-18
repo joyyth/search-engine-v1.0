@@ -94,22 +94,36 @@ func TestSearchHandlerReturnsSearchResults(t *testing.T) {
 		t.Fatalf("content-type = %q, want application/json", got)
 	}
 
-	var results []struct {
-		Document model.Document
-		Snippet  string
+	var payload struct {
+		Query   string `json:"query"`
+		TookMs  int64  `json:"took_ms"`
+		Total   int    `json:"total"`
+		Results []struct {
+			Document model.Document `json:"document"`
+			Snippet  string         `json:"snippet"`
+		} `json:"results"`
 	}
-	if err := json.NewDecoder(response.Body).Decode(&results); err != nil {
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
 
-	if len(results) != 1 {
-		t.Fatalf("results = %d, want 1", len(results))
+	if payload.Query != "goroutines" {
+		t.Fatalf("query = %q, want %q", payload.Query, "goroutines")
 	}
-	if results[0].Document.URL != "https://example.com/go" {
-		t.Fatalf("url = %q, want %q", results[0].Document.URL, "https://example.com/go")
+	if payload.TookMs < 0 {
+		t.Fatalf("took_ms = %d, want non-negative", payload.TookMs)
 	}
-	if !strings.Contains(strings.ToLower(results[0].Snippet), "goroutines") {
-		t.Fatalf("snippet = %q, want it to mention goroutines", results[0].Snippet)
+	if payload.Total != 1 {
+		t.Fatalf("total = %d, want 1", payload.Total)
+	}
+	if len(payload.Results) != 1 {
+		t.Fatalf("results = %d, want 1", len(payload.Results))
+	}
+	if payload.Results[0].Document.URL != "https://example.com/go" {
+		t.Fatalf("url = %q, want %q", payload.Results[0].Document.URL, "https://example.com/go")
+	}
+	if !strings.Contains(strings.ToLower(payload.Results[0].Snippet), "goroutines") {
+		t.Fatalf("snippet = %q, want it to mention goroutines", payload.Results[0].Snippet)
 	}
 }
 

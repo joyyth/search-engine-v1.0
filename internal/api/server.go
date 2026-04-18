@@ -47,9 +47,21 @@ func (s *Server) SearchHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Missing query parameter", http.StatusBadRequest)
 		return
 	}
-	results := s.search.SearchWithSnippets(query)
+	start := time.Now()
+	results, total := s.search.SearchWithSnippets(query)
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(results); err != nil {
+	payload := struct {
+		Query   string          `json:"query"`
+		TookMs  int64           `json:"took_ms"`
+		Total   int             `json:"total"`
+		Results []search.Result `json:"results"`
+	}{
+		Query:   query,
+		TookMs:  time.Since(start).Milliseconds(),
+		Total:   total,
+		Results: results,
+	}
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		http.Error(w, "Failed to encode results", http.StatusInternalServerError)
 		return
 	}

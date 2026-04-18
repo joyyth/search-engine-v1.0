@@ -13,8 +13,8 @@ import (
 const maxResults = 20
 
 type Result struct {
-    Document model.Document
-    Snippet  string
+	Document model.Document `json:"document"`
+	Snippet  string         `json:"snippet"`
 }
 
 type Search struct {
@@ -24,39 +24,39 @@ type Search struct {
 func NewSearch(indexer *indexer.Indexer) *Search {
 	return &Search{indexer: indexer}
 }
-func (s *Search) SearchWithSnippets(query string) []Result {
-    docs := s.Search(query)
-    rawTokens := strings.Fields(strings.ToLower(query))
-    results := make([]Result, len(docs))
-    for i, doc := range docs {
-        results[i] = Result{
-            Document: doc,
-            Snippet:  utils.BuildSnippet(rawTokens, doc.Content),
-        }
-    }
-    return results
+func (s *Search) SearchWithSnippets(query string) ([]Result, int) {
+	docs, total := s.Search(query)
+	rawTokens := strings.Fields(strings.ToLower(query))
+	results := make([]Result, len(docs))
+	for i, doc := range docs {
+		results[i] = Result{
+			Document: doc,
+			Snippet:  utils.BuildSnippet(rawTokens, doc.Content),
+		}
+	}
+	return results, total
 }
 
-func (s *Search) Search(query string) []model.Document {
+func (s *Search) Search(query string) ([]model.Document, int) {
 	tokens := indexer.Analyzer(query)
 
 	scores := make(map[int]float64)
 	n := float64(s.indexer.DocCount())
 	if n == 0 {
-        return nil
-    }
+		return nil, 0
+	}
 	for _, token := range tokens {
-		postings,ok :=s.indexer.Lookup(token)
+		postings, ok := s.indexer.Lookup(token)
 		if !ok {
 			continue
 		}
-	    idf := math.Log(1 + n/float64(len(postings)))
-		for _,p := range postings {
+		idf := math.Log(1 + n/float64(len(postings)))
+		for _, p := range postings {
 			scores[p.DocID] += p.TF * idf
 		}
 	}
 	if len(scores) == 0 {
-		return nil
+		return nil, 0
 	}
 
 	type scoredDocument struct {
@@ -71,6 +71,7 @@ func (s *Search) Search(query string) []model.Document {
 		return ranked[i].score > ranked[j].score
 	})
 
+	total := len(ranked)
 	results := make([]model.Document, 0, len(ranked))
 	for _, r := range ranked {
 		if doc, ok := s.indexer.GetDocument(r.id); ok {
@@ -81,9 +82,9 @@ func (s *Search) Search(query string) []model.Document {
 		}
 	}
 
-	return results
+	return results, total
 }
 
-func (s *Search) Stats() indexer.Stats{
+func (s *Search) Stats() indexer.Stats {
 	return s.indexer.Stats()
 }

@@ -323,18 +323,37 @@
         }
 
         const data = await response.json();
-        if (!Array.isArray(data) || data.length === 0) {
+        const items = Array.isArray(data.results) ? data.results : [];
+        const total = typeof data.total === "number" ? data.total : 0;
+
+        if (items.length === 0 || total === 0) {
           setMeta("No results");
           setEmptyState("No results. Try fewer words.");
           return;
         }
 
-        const metaText = data.length === 20
-          ? "Showing first 20 results for \"" + trimmedQuery + "\""
-          : data.length + " result" + (data.length === 1 ? "" : "s") + " for \"" + trimmedQuery + "\"";
+        var metaText;
+        if (total > items.length) {
+          metaText =
+            "Showing " +
+            items.length +
+            " of " +
+            total +
+            " results for \"" +
+            trimmedQuery +
+            "\"";
+        } else {
+          metaText =
+            total +
+            " result" +
+            (total === 1 ? "" : "s") +
+            " for \"" +
+            trimmedQuery +
+            "\"";
+        }
 
         setMeta(metaText);
-        results.replaceChildren(...data.map(createResult));
+        results.replaceChildren(...items.map(createResult));
       } catch (err) {
         setMeta("Search indexed pages");
         error.hidden = false;
