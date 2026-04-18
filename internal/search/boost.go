@@ -10,9 +10,9 @@ import (
 
 const (
 	exactURLPathBoost = 18.0
-	urlSegmentBoost = 14.0
-	titleTokenBoost = 4.0
-	titlePhraseBoost = 6.0
+	urlSegmentBoost   = 14.0
+	titleTokenBoost   = 4.0
+	titlePhraseBoost  = 6.0
 )
 
 // pathURLSegments returns lowercased URL path segments, without version suffixes

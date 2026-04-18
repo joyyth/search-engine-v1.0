@@ -11,8 +11,8 @@ type mockStore struct {
 	index map[string][]model.Posting
 }
 
-func (m *mockStore) SaveDocuments(docs []model.Document) error { m.docs = docs; return nil }
-func (m *mockStore) LoadDocuments() ([]model.Document, error)  { return m.docs, nil }
+func (m *mockStore) SaveDocuments(docs []model.Document) error      { m.docs = docs; return nil }
+func (m *mockStore) LoadDocuments() ([]model.Document, error)       { return m.docs, nil }
 func (m *mockStore) SaveIndex(idx map[string][]model.Posting) error { m.index = idx; return nil }
 func (m *mockStore) LoadIndex() (map[string][]model.Posting, error) { return m.index, nil }
 

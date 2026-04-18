@@ -13,15 +13,15 @@ type Indexer struct {
 	documents []model.Document
 	store     store.Store
 }
-type Stats struct{
-	TotalDocuments int `json:"total_documents"`
-	TotalTerms int `json:"total_terms"`
-	TopTerms []TermStat `json:"term_stats"`
+type Stats struct {
+	TotalDocuments int        `json:"total_documents"`
+	TotalTerms     int        `json:"total_terms"`
+	TopTerms       []TermStat `json:"term_stats"`
 }
 
-type TermStat struct{
-	Term string `json:"term"`
-	DocCount int `json:"doc_count"`
+type TermStat struct {
+	Term     string `json:"term"`
+	DocCount int    `json:"doc_count"`
 }
 
 func NewIndexer(s store.Store) *Indexer {
@@ -32,7 +32,7 @@ func NewIndexer(s store.Store) *Indexer {
 	}
 }
 
-// Lookup returns postings for a token 
+// Lookup returns postings for a token
 func (idx *Indexer) Lookup(token string) ([]model.Posting, bool) {
 	ids, ok := idx.index[token]
 	return ids, ok
@@ -45,15 +45,15 @@ func (idx *Indexer) AddDocument(doc model.Document) {
 	tokens := append(Analyzer(doc.Content), Analyzer(doc.Title)...)
 
 	// count the occurrences of each token in the document
-	termCounts:= make(map[string]int)
-	for _,t := range tokens{
+	termCounts := make(map[string]int)
+	for _, t := range tokens {
 		termCounts[t]++
 	}
 	totalTokens := len(tokens)
 	if totalTokens == 0 {
 		return
 	}
-	for token, count := range termCounts{
+	for token, count := range termCounts {
 		tf := float64(count) / float64(totalTokens)
 		idx.index[token] = append(idx.index[token], model.Posting{DocID: doc.ID, TF: tf})
 	}
@@ -94,29 +94,29 @@ func (idx *Indexer) Load() error {
 	return nil
 }
 
-func (idx *Indexer) Stats() Stats{
+func (idx *Indexer) Stats() Stats {
 
-	type kv struct{
-		term string 
-		count int 
+	type kv struct {
+		term  string
+		count int
 	}
-    pairs := make([]kv,0, len(idx.index))
-	for term, ids := range idx.index{
-		 pairs = append(pairs, kv{term:term, count: len(ids)})
+	pairs := make([]kv, 0, len(idx.index))
+	for term, ids := range idx.index {
+		pairs = append(pairs, kv{term: term, count: len(ids)})
 	}
-	sort.Slice(pairs, func(i,j int) bool{
-		return  pairs[i].count >pairs[j].count
+	sort.Slice(pairs, func(i, j int) bool {
+		return pairs[i].count > pairs[j].count
 	})
 
 	top := min(10, len(pairs))
-	topTerms := make([]TermStat,top)
+	topTerms := make([]TermStat, top)
 	for idx, p := range pairs[:top] {
-        topTerms[idx] = TermStat{Term: p.term, DocCount: p.count}
-    }
+		topTerms[idx] = TermStat{Term: p.term, DocCount: p.count}
+	}
 	return Stats{
 		TotalDocuments: len(idx.documents),
-		TotalTerms: len(idx.index),
-		TopTerms: topTerms,
+		TotalTerms:     len(idx.index),
+		TopTerms:       topTerms,
 	}
 
 }

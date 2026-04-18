@@ -7,4 +7,4 @@ require (
 	golang.org/x/net v0.52.0
 )
 
-require golang.org/x/time v0.15.0 // indirect
+require golang.org/x/time v0.15.0
