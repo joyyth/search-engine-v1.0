@@ -2,6 +2,8 @@
 
 I tried building this to learn how search engines work. I was learning Go, so I aimed it at the Go docs (pkg.go.dev/std).
 
+![Search UI showing pkg.go.dev results for hash](public/search-ui.png)
+
 ---
 
 ## Architecture
@@ -56,10 +58,11 @@ Data flows **left to right, once per mode**: crawl writes `pages.json`, index re
 
 ## Quickstart
 
-Needs Go 1.22+. From a clean clone:
+- Clone the repository by running `git clone https://github.com/joyyth/search-engine-v1.0`
+- cd search-engine-v1.0
 
 ```bash
-go run ./cmd -crawl     # fetch up to 200 pages from en.wikipedia.org → data/pages.json
+go run ./cmd -crawl     # fetch up to 200 pages from pkg.go.dev/std → data/pages.json
 go run ./cmd -index     # build the inverted index              → data/index.json
 go run ./cmd -serve     # start the API + UI on http://localhost:8082
 ```
@@ -67,7 +70,7 @@ go run ./cmd -serve     # start the API + UI on http://localhost:8082
 Then open `http://localhost:8082` in a browser, or:
 
 ```bash
-curl 'http://localhost:8082/search?q=concurrency'
+curl 'http://localhost:8082/search?q=hash'
 ```
 
 All three flags can be combined (`go run ./cmd -crawl -index -serve`) to run the full pipeline in one process.
@@ -78,24 +81,29 @@ All three flags can be combined (`go run ./cmd -crawl -index -serve`) to run the
 
 ### `GET /search?q={query}`
 
-Returns the top 20 documents ranked by TF·IDF with a snippet centered on the highest-scoring raw-query token.
+Returns a JSON object containing the original query, elapsed search time, total matches, and up to 20 top-ranked documents with snippets centered on the highest-scoring raw-query token.
 
 ```bash
 curl -s 'http://localhost:8082/search?q=goroutine' | jq .
 ```
 
 ```json
-[
-  {
-    "Document": {
-      "id": 42,
-      "url": "https://en.wikipedia.org/wiki/Go_(programming_language)",
-      "title": "Go (programming language) - Wikipedia",
-      "content": "Go is a statically typed, compiled programming language..."
-    },
-    "Snippet": "...concurrency primitives such as goroutines and channels are first-class..."
-  }
-]
+{
+  "query": "goroutine",
+  "took_ms": 1,
+  "total": 20,
+  "results": [
+    {
+      "document": {
+        "id": 17,
+        "url": "https://pkg.go.dev/runtime",
+        "title": "runtime package - runtime - Go Packages",
+        "content": "Package runtime contains operations that interact with Go's runtime system, such as functions to control goroutines..."
+      },
+      "snippet": "...Package runtime contains operations that interact with Go's runtime system, such as functions to control goroutines..."
+    }
+  ]
+}
 ```
 
 Errors:
@@ -143,45 +151,27 @@ Serves the embedded UI (`internal/api/web/index.html`). Reads `?q=` from the URL
 
 ---
 
-## Technical specifications
+### Services and workflows
 
-| Area                    | Details                                                                                                                                                                                                               |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Concurrency (crawl)** | Fixed-size worker pool; BFS queue and `visited` / page list protected with `sync.Mutex`; per-request stats on `atomic.Int32`; `context.Context` on HTTP fetches.                                                      |
-| **Concurrency (index)** | `Indexer.AddDocument` is **not** safe for parallel calls (single-threaded during `-index`).                                                                                                                           |
-| **Concurrency (serve)** | Index and document slice are loaded once, then only read; HTTP handlers call search concurrently with no writers on that data.                                                                                        |
-| **Ranking**             | TF·IDF: per query term, `idf = log(1 + N/df)` (`N` = corpus size, `df` = posting-list length); score = Σ (`tf` × `idf`) over terms; `tf` is normalized term frequency in the document at index time. Top 20 by score. |
-| **Retrieval**           | Inverted index: `term → []Posting{DocID, TF}`; same analyzer on index and query (lowercase, alphanumeric tokenizer, stopwords, Snowball English stem).                                                                |
-| **Snippets**            | Built from lowercased raw query tokens (not stems) against full document text.                                                                                                                                        |
-| **Persistence**         | `data/pages.json`, `data/index.json`; JSON writes via temp file + rename.                                                                                                                                             |
-| **HTTP**                | `net/http`, Go 1.22 method patterns; CORS middleware; JSON `log/slog`.                                                                                                                                                |
-
----
-
-## What I would build next
-
-In priority order, with the reasoning:
-
-1. **BM25 ranking behind a `?ranker=` query parameter.** TF·IDF ignores document length; a 100-word page with three hits beats a 10,000-word page with twenty. BM25 fixes this in ~40 lines and gives a measurable MRR improvement over a labeled sample. TF·IDF stays as the baseline for A/B comparison.
-2. **Incremental indexing via `POST /index`.** Today `AddDocument` is not safe for concurrent use and only runs offline. Putting it behind a `sync.RWMutex` and exposing it over HTTP would turn this from a batch toy into something that looks like a real service.
-3. **Prometheus `/metrics` endpoint.** Request count, p50/p99 latency, index size, crawl rate. Middleware wraps `ResponseWriter` to capture status codes. Opens the door to meaningful dashboards and is the single most signal-giving addition for an SRE-adjacent reviewer.
-4. **BoltDB `Store` implementation.** Proves the `Store` interface is real and not decorative. Sub-millisecond term lookup on >100k-doc corpora without loading the entire index into memory.
-5. **Autocomplete (`GET /suggest?q=`).** A prefix trie built at load time over unique index terms. Small, visible in the UI, and a nice opportunity to talk about trade-offs between tries and FSTs.
-6. **Crawler politeness.** `robots.txt` parsing and per-host rate limiting via `golang.org/x/time/rate`. Required for a real crawler; right now the scope is capped by `MaxPages` rather than by etiquette.
-7. **Query expansion with synonyms.** Small hand-curated synonym map applied after tokenization. Improves recall for short queries, demonstrates awareness of where pure lexical search breaks down.
+- **Crawler Workers**: Crawls pages from the seed URL with a breadth-first strategy and deduplicates visited URLs. It fetches HTML pages, extracts links, and persists crawled documents to `data/pages.json` via the JSON store.
+- **Indexer**: Reads crawled pages from `data/pages.json` and builds an inverted index (`term -> postings`). It applies lowercase/tokenization/stopword filtering/stemming and writes the output to `data/index.json`.
+- **TF-IDF Ranker**: Uses term frequency stored in postings and computes inverse document frequency at query time to score documents for a search query.
+- **Query Engine (API)**: Serves `/search`, validates query input, runs retrieval and ranking, builds snippets. The top ranked matches are returned with snippets.
+- **Stats Service**: Exposes corpus/index metrics through `/stats` so you can inspect total documents, total terms, and high document-frequency terms.
+- **Client Web UI**: Serves the search interface at `/` and displays ranked results from the API.
 
 ---
 
 ## Tech stack
 
-| Area                   | Choice                                           | Reason                                                |
-| ---------------------- | ------------------------------------------------ | ----------------------------------------------------- |
-| Language               | Go 1.22+                                         | Learning Go                                           |
-| Web interface          | Single HTML file, vanilla JS, `go:embed`         |
-| Task runner (optional) | [go-task](https://taskfile.dev) (`Taskfile.yml`) | Not required — `go run ./cmd -serve` works standalone |
+- \*\*GoLang
+- \*\*HTML/CSS/JS for the client-side web interface.
+- \*\*Taskfile for running the project. (not required - go run ./cmd -serve works standalone)
 
 ---
 
-## License
+## Plans
 
-[MIT](LICENSE) — Copyright (c) 2026 Tanvir Hassan Joy.
+1. **BM25 ranking behind a `?ranker=` query parameter.**
+2. **BoltDB `Store` implementation.**
+3. **Autocomplete (`GET /suggest?q=`).** A prefix trie built at load time over unique index terms.
