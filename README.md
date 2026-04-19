@@ -1,3 +1,5 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/joyyth/search-engine-v1.0)](https://goreportcard.com/report/github.com/joyyth/search-engine-v1.0)
+
 # Search Engine
 
 I tried building this to learn how search engines work. I was learning Go, so I aimed it at the Go docs (pkg.go.dev/std).
@@ -164,9 +166,9 @@ Serves the embedded UI (`internal/api/web/index.html`). Reads `?q=` from the URL
 
 ## Tech stack
 
-- \*\*GoLang
-- \*\*HTML/CSS/JS for the client-side web interface.
-- \*\*Taskfile for running the project. (not required - go run ./cmd -serve works standalone)
+- Go
+- HTML/CSS/JS for the client-side web interface.
+- Taskfile for running the project. (not required - go run ./cmd -serve works standalone)
 
 ---
 
