@@ -90,13 +90,26 @@ func (s *Search) Search(query string) ([]model.Document, int) {
 	type scoredDocument struct {
 		id    int
 		score float64
+		url   string
 	}
 	ranked := make([]scoredDocument, 0, len(scores))
 	for id, score := range scores {
-		ranked = append(ranked, scoredDocument{id: id, score: score})
+		var u string
+		if doc, ok := s.indexer.GetDocument(id); ok {
+			u = doc.URL
+		}
+		ranked = append(ranked, scoredDocument{id: id, score: score, url: u})
 	}
+	// Sort by score desc, then URL asc, then DocID asc so ties are deterministic
+	// across runs (map iteration order would otherwise reorder equal-score results).
 	sort.Slice(ranked, func(i, j int) bool {
-		return ranked[i].score > ranked[j].score
+		if ranked[i].score != ranked[j].score {
+			return ranked[i].score > ranked[j].score
+		}
+		if ranked[i].url != ranked[j].url {
+			return ranked[i].url < ranked[j].url
+		}
+		return ranked[i].id < ranked[j].id
 	})
 
 	total := len(ranked)

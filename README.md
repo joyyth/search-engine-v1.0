@@ -1,4 +1,4 @@
-[![Go Report Card](https://goreportcard.com/badge/github.com/joyyth/search-engine-v1.0)](https://goreportcard.com/report/github.com/joyyth/search-engine-v1.0)
+[![Go Reference](https://pkg.go.dev/badge/github.com/joyyth/search-engine-v1.0.svg)](https://pkg.go.dev/github.com/joyyth/search-engine-v1.0) [![Go Report Card](https://goreportcard.com/badge/github.com/joyyth/search-engine-v1.0)](https://goreportcard.com/report/github.com/joyyth/search-engine-v1.0)
 
 # Search Engine
 

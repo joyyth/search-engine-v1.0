@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -23,7 +24,27 @@ const (
 	defaultMaxPages    = 200
 	defaultUserAgent   = "SearchEngineV1/0.1 (https://joyyth.com/bot; joyyth@gmail.com)"
 	max429Retries      = 8
+	// maxBodyBytes caps how much of a response body we will read and parse.
+	// Keeps a misbehaving or accidentally large page from dominating memory/CPU.
+	maxBodyBytes = 5 << 20 // 5 MiB
 )
+
+// isHTMLContentType reports whether ct indicates an HTML document we should parse.
+// An empty Content-Type is accepted for tolerance with minimal test servers.
+func isHTMLContentType(ct string) bool {
+	if ct == "" {
+		return true
+	}
+	mediaType, _, err := mime.ParseMediaType(ct)
+	if err != nil {
+		return false
+	}
+	switch mediaType {
+	case "text/html", "application/xhtml+xml":
+		return true
+	}
+	return false
+}
 
 // Config limits the crawl and sets the HTTP User-Agent. Zero fields use defaults from NewCrawler.
 // HTTPClient, when set, is used instead of the default client (e.g. httptest.NewTLSServer's Client).
@@ -300,7 +321,28 @@ func (c *Crawler) fetch(ctx context.Context, item queueItem) workerResult {
 		}
 
 		if resp.StatusCode == http.StatusOK {
-			links, title, content := extractLinks(resp.Body, c.cfg.AllowedHost)
+			ct := resp.Header.Get("Content-Type")
+			if !isHTMLContentType(ct) {
+				_, _ = io.Copy(io.Discard, resp.Body)
+				resp.Body.Close()
+				c.stats.nonOK.Add(1)
+				slog.Info("fetch skipped",
+					"url", item.URL,
+					"depth", item.depth,
+					"status", resp.StatusCode,
+					"content_type", ct,
+					"duration", time.Since(start),
+					"note", "unsupported content-type",
+				)
+				return workerResult{item: item}
+			}
+
+			body := io.LimitReader(resp.Body, maxBodyBytes)
+			links, title, content := extractLinks(body, c.cfg.AllowedHost)
+			// Drain anything LimitReader didn't consume (bodies >maxBodyBytes)
+			// so the HTTP transport can reuse the keep-alive connection.
+			// The http.Client.Timeout bounds a pathological server.
+			_, _ = io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 			c.stats.succeeded.Add(1)
 			slog.Info("fetch complete",
