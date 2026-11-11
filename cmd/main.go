@@ -17,6 +17,7 @@ import (
 	"github.com/joyyth/search-engine-v1.0/internal/model"
 	"github.com/joyyth/search-engine-v1.0/internal/search"
 	"github.com/joyyth/search-engine-v1.0/internal/store"
+	"github.com/joyyth/search-engine-v1.0/internal/suggest"
 )
 
 const (
@@ -111,7 +112,13 @@ func runServe(s store.Store, addr string) {
 		log.Fatalf("failed to load index: %v", err)
 	}
 
-	srv := api.NewServer(search.NewSearch(idx))
+	texts := make([]string, 0, idx.DocCount())
+	for i := 0; i < idx.DocCount(); i++ {
+		if doc, ok := idx.GetDocument(i); ok {
+			texts = append(texts, doc.Title+" "+doc.Content)
+		}
+	}
+	srv := api.NewServer(search.NewSearch(idx), suggest.New(texts))
 
 	httpServer := srv.BuildHTTPServer(addr)
 

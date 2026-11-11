@@ -41,7 +41,7 @@ func newTestHTTPServer(t *testing.T) *httptest.Server {
 		Content: "Go concurrency patterns use goroutines and channels for coordination.",
 	})
 
-	srv := NewServer(search.NewSearch(idx))
+	srv := NewServer(search.NewSearch(idx), nil)
 	httpServer := srv.BuildHTTPServer(":0")
 	return httptest.NewServer(httpServer.Handler)
 }
@@ -160,5 +160,123 @@ func TestHealthAndStatsHandlersStayAvailable(t *testing.T) {
 
 	if stats.TotalDocuments != 1 {
 		t.Fatalf("total_documents = %d, want 1", stats.TotalDocuments)
+	}
+}
+
+type fakeSuggester struct {
+	words []string
+	got   string
+}
+
+func (f *fakeSuggester) Suggest(prefix string) []string {
+	f.got = prefix
+	return f.words
+}
+
+func newSuggestTestServer(t *testing.T, suggester Suggester) *httptest.Server {
+	t.Helper()
+
+	idx := indexer.NewIndexer(testStore{})
+	srv := NewServer(search.NewSearch(idx), suggester)
+	return httptest.NewServer(srv.BuildHTTPServer(":0").Handler)
+}
+
+type suggestResponse struct {
+	Query       string          `json:"query"`
+	Suggestions json.RawMessage `json:"suggestions"`
+}
+
+func getSuggest(t *testing.T, server *httptest.Server, rawQuery string) (int, string, []byte) {
+	t.Helper()
+
+	response, err := http.Get(server.URL + "/suggest" + rawQuery)
+	if err != nil {
+		t.Fatalf("get /suggest: %v", err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	return response.StatusCode, response.Header.Get("Content-Type"), body
+}
+
+func TestSuggestHandlerRejectsMissingQuery(t *testing.T) {
+	server := newSuggestTestServer(t, &fakeSuggester{words: []string{"array"}})
+	defer server.Close()
+
+	for _, rawQuery := range []string{"", "?q="} {
+		status, _, _ := getSuggest(t, server, rawQuery)
+		if status != http.StatusBadRequest {
+			t.Fatalf("query %q: status = %d, want %d", rawQuery, status, http.StatusBadRequest)
+		}
+	}
+}
+
+func TestSuggestHandlerReturnsSuggestions(t *testing.T) {
+	fake := &fakeSuggester{words: []string{"array", "archive"}}
+	server := newSuggestTestServer(t, fake)
+	defer server.Close()
+
+	status, contentType, body := getSuggest(t, server, "?q=ar")
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want %d", status, http.StatusOK)
+	}
+	if !strings.HasPrefix(contentType, "application/json") {
+		t.Fatalf("content type = %q, want application/json", contentType)
+	}
+	if fake.got != "ar" {
+		t.Fatalf("suggester got %q, want %q", fake.got, "ar")
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(fields) != 2 {
+		t.Fatalf("fields = %v, want only query and suggestions", fields)
+	}
+
+	var payload struct {
+		Query       string   `json:"query"`
+		Suggestions []string `json:"suggestions"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if payload.Query != "ar" {
+		t.Fatalf("query = %q, want %q", payload.Query, "ar")
+	}
+	if strings.Join(payload.Suggestions, ",") != "array,archive" {
+		t.Fatalf("suggestions = %v, want [array archive]", payload.Suggestions)
+	}
+}
+
+func TestSuggestHandlerReturnsEmptyArrayNotNull(t *testing.T) {
+	cases := map[string]Suggester{
+		"nil slice":     &fakeSuggester{words: nil},
+		"empty slice":   &fakeSuggester{words: []string{}},
+		"nil suggester": nil,
+	}
+	for name, suggester := range cases {
+		t.Run(name, func(t *testing.T) {
+			server := newSuggestTestServer(t, suggester)
+			defer server.Close()
+
+			status, _, body := getSuggest(t, server, "?q=a")
+			if status != http.StatusOK {
+				t.Fatalf("status = %d, want %d", status, http.StatusOK)
+			}
+			var payload suggestResponse
+			if err := json.Unmarshal(body, &payload); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if string(payload.Suggestions) != "[]" {
+				t.Fatalf("suggestions = %s, want []", payload.Suggestions)
+			}
+			if payload.Query != "a" {
+				t.Fatalf("query = %q, want %q", payload.Query, "a")
+			}
+		})
 	}
 }

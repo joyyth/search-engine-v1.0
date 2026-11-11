@@ -48,6 +48,7 @@ I tried building this to learn how search engines work. I am learning Go, so I a
 │    GET /          → embedded web UI (go:embed)    │
 │    GET /search?q= → TF·IDF ranking + snippets     │
 │    GET /stats     → doc count, top terms          │
+│    GET /suggest?q= → prefix word suggestions      │
 │    GET /health    → liveness                      │
 │                                                   │
 │  IDF = log(1 + N/df) computed per query           │
@@ -75,6 +76,24 @@ Then open `http://localhost:8082` in a browser, or:
 curl 'http://localhost:8082/search?q=hash'
 ```
 
+### `GET /suggest?q=`
+
+Returns autocomplete suggestions: real, unstemmed words from the title and content of the indexed documents that start with `q`.
+
+- `q` (required): the prefix. It is trimmed and lowercased. A missing or empty `q` returns `400 Bad Request`.
+- A prefix shorter than 2 characters (runes) returns an empty list.
+- At most 8 suggestions are returned, ranked by document frequency (the number of documents that contain the word), then alphabetically.
+- `suggestions` is always a JSON array, never `null`.
+- The suggestions are built once in memory when `-serve` starts, after the index is loaded. They are not saved to disk.
+
+```bash
+curl 'http://localhost:8082/suggest?q=ar'
+```
+
+```json
+{"query":"ar","suggestions":["arguments","array","archive"]}
+```
+
 All three flags can be combined (`go run ./cmd -crawl -index -serve`) to run the full pipeline in one process.
 
 ---
@@ -85,6 +104,7 @@ All three flags can be combined (`go run ./cmd -crawl -index -serve`) to run the
 - **Indexer**: Reads crawled pages from `data/pages.json` and builds an inverted index (`term -> postings`). It applies lowercase/tokenization/stopword filtering/stemming and writes the output to `data/index.json`.
 - **TF-IDF Ranker**: Uses term frequency stored in postings and computes inverse document frequency at query time to score documents for a search query.
 - **Query Engine (API)**: Serves `/search`, validates query input, runs retrieval and ranking, boosts ranking scores for pkg.go.dev-style URLs and titles, and builds snippets.The top ranked matches are returned with snippets.
+- **Suggest Service**: Serves `/suggest`, returning up to 8 unstemmed words from the corpus that start with the given prefix, ranked by document frequency.
 - **Stats Service**: Exposes corpus/index metrics through `/stats` so you can inspect total documents, total terms, and high document-frequency terms.
 - **Client Web UI**: Serves the search interface at `/` and displays ranked results from the API.
 
@@ -102,4 +122,3 @@ All three flags can be combined (`go run ./cmd -crawl -index -serve`) to run the
 
 1. **BM25 ranking behind a `?ranker=` query parameter.**
 2. **BoltDB/BadgerDB `Store` implementation.**
-3. **Autocomplete (`GET /suggest?q=`).** A prefix trie built at load time over unique index terms.

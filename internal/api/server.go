@@ -13,21 +13,30 @@ import (
 //go:embed web/index.html
 var webFiles embed.FS
 
-type Server struct {
-	search *search.Search
-	mux    *http.ServeMux
+// Suggester gives prefix suggestions for the /suggest route. The api package
+// declares it so that it does not depend on how suggestions are built.
+type Suggester interface {
+	Suggest(prefix string) []string
 }
 
-func NewServer(search *search.Search) *Server {
+type Server struct {
+	search    *search.Search
+	suggester Suggester
+	mux       *http.ServeMux
+}
+
+func NewServer(search *search.Search, suggester Suggester) *Server {
 	srv := &Server{
-		search: search,
-		mux:    http.NewServeMux(),
+		search:    search,
+		suggester: suggester,
+		mux:       http.NewServeMux(),
 	}
 
 	srv.mux.HandleFunc("GET /{$}", srv.IndexHandler)
 	srv.mux.HandleFunc("GET /search", srv.SearchHandler)
 	srv.mux.HandleFunc("GET /health", srv.HealthHandler)
 	srv.mux.HandleFunc("GET /stats", srv.StatsHandler)
+	srv.mux.HandleFunc("GET /suggest", srv.SuggestHandler)
 	return srv
 }
 
@@ -63,6 +72,33 @@ func (s *Server) SearchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		http.Error(w, "Failed to encode results", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (s *Server) SuggestHandler(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		http.Error(w, "Missing query parameter", http.StatusBadRequest)
+		return
+	}
+	var suggestions []string
+	if s.suggester != nil {
+		suggestions = s.suggester.Suggest(query)
+	}
+	if suggestions == nil {
+		suggestions = []string{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	payload := struct {
+		Query       string   `json:"query"`
+		Suggestions []string `json:"suggestions"`
+	}{
+		Query:       query,
+		Suggestions: suggestions,
+	}
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		http.Error(w, "Failed to encode suggestions", http.StatusInternalServerError)
 		return
 	}
 }
