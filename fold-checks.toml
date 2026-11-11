@@ -1,0 +1,20 @@
+# Checks every proposal must pass before it reaches main.
+
+[[check]]
+name = "gofmt"
+run = 'out=$(gofmt -l cmd internal); if [ -n "$out" ]; then echo "gofmt needed:"; echo "$out"; exit 1; fi'
+files = '\.go$'
+stage = ["proposal", "integration"]
+
+[[check]]
+name = "vet"
+run = "go vet ./..."
+files = '\.go$|(^|/)go\.(mod|sum)$'
+stage = ["proposal", "integration"]
+
+[[check]]
+name = "test"
+run = "go test ./..."
+files = '\.go$|(^|/)go\.(mod|sum)$|\.html$'
+stage = ["proposal", "integration"]
+timeout = "10m"
