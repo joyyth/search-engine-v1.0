@@ -87,6 +87,41 @@
       outline-offset: 2px;
     }
 
+    .search-field {
+      position: relative;
+      min-width: 0;
+    }
+
+    .suggestions {
+      position: absolute;
+      top: calc(100% + 0.35rem);
+      left: 0;
+      right: 0;
+      z-index: 10;
+      margin: 0;
+      padding: 0.3rem 0;
+      list-style: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      animation: fade-in 150ms ease;
+    }
+
+    .suggestion {
+      padding: 0.45rem 0.9rem;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      line-height: 1.4;
+      cursor: pointer;
+    }
+
+    .suggestion:hover,
+    .suggestion[aria-selected="true"] {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+    }
+
     .search-button {
       padding: 0 1rem;
       background: transparent;
@@ -214,16 +249,23 @@
   <main class="page">
     <p class="wordmark">Search</p>
     <form class="search-form" id="search-form">
-      <input
-        id="query"
-        class="search-input"
-        type="search"
-        name="q"
-        placeholder="Search indexed pages"
-        autocomplete="off"
-        spellcheck="false"
-        aria-label="Search indexed pages"
-      >
+      <div class="search-field">
+        <input
+          id="query"
+          class="search-input"
+          type="search"
+          name="q"
+          placeholder="Search indexed pages"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Search indexed pages"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-controls="suggestions"
+          aria-expanded="false"
+        >
+        <ul class="suggestions" id="suggestions" role="listbox" aria-label="Suggestions" hidden></ul>
+      </div>
       <button class="search-button" type="submit" id="search-button">Go</button>
     </form>
     <p class="meta" id="meta">Search indexed pages</p>
@@ -363,8 +405,165 @@
       }
     }
 
+    const suggestionList = document.getElementById("suggestions");
+    const SUGGEST_DELAY_MS = 150;
+    const SUGGEST_MIN_LENGTH = 2;
+    let suggestTimer = null;
+    let suggestController = null;
+    let suggestionWords = [];
+    let activeSuggestion = -1;
+
+    // The /suggest route completes one word, so only the last word of the
+    // input is sent and a picked suggestion replaces that word.
+    function lastWord(value) {
+      const match = value.match(/\S+$/);
+      return match ? match[0] : "";
+    }
+
+    function cancelPendingSuggestions() {
+      clearTimeout(suggestTimer);
+      suggestTimer = null;
+      if (suggestController) {
+        suggestController.abort();
+        suggestController = null;
+      }
+    }
+
+    function closeSuggestions() {
+      cancelPendingSuggestions();
+      suggestionWords = [];
+      activeSuggestion = -1;
+      suggestionList.hidden = true;
+      suggestionList.replaceChildren();
+      queryInput.setAttribute("aria-expanded", "false");
+      queryInput.removeAttribute("aria-activedescendant");
+    }
+
+    function setActiveSuggestion(index) {
+      const options = suggestionList.children;
+      if (activeSuggestion >= 0 && options[activeSuggestion]) {
+        options[activeSuggestion].setAttribute("aria-selected", "false");
+      }
+      activeSuggestion = index;
+      if (index >= 0 && options[index]) {
+        options[index].setAttribute("aria-selected", "true");
+        options[index].scrollIntoView({ block: "nearest" });
+        queryInput.setAttribute("aria-activedescendant", options[index].id);
+      } else {
+        queryInput.removeAttribute("aria-activedescendant");
+      }
+    }
+
+    function pickSuggestion(word) {
+      const value = queryInput.value.replace(/\s+$/, "");
+      queryInput.value = value.replace(/\S+$/, word);
+      closeSuggestions();
+      search(queryInput.value, true);
+    }
+
+    function createSuggestion(word, index) {
+      const option = document.createElement("li");
+      option.className = "suggestion";
+      option.id = "suggestion-" + index;
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", "false");
+      option.textContent = word;
+      // mousedown runs before the input's blur, which would close the list.
+      option.addEventListener("mousedown", function (event) {
+        event.preventDefault();
+        pickSuggestion(word);
+      });
+      return option;
+    }
+
+    function renderSuggestions(words) {
+      if (words.length === 0) {
+        closeSuggestions();
+        return;
+      }
+      suggestionWords = words;
+      activeSuggestion = -1;
+      suggestionList.replaceChildren(...words.map(createSuggestion));
+      suggestionList.hidden = false;
+      queryInput.setAttribute("aria-expanded", "true");
+      queryInput.removeAttribute("aria-activedescendant");
+    }
+
+    async function fetchSuggestions(prefix) {
+      const controller = new AbortController();
+      suggestController = controller;
+      try {
+        const response = await fetch("/suggest?q=" + encodeURIComponent(prefix), {
+          headers: {
+            Accept: "application/json"
+          },
+          signal: controller.signal
+        });
+        if (!response.ok) {
+          throw new Error("Suggest failed");
+        }
+        const data = await response.json();
+        if (suggestController !== controller) {
+          return;
+        }
+        suggestController = null;
+        const words = Array.isArray(data.suggestions)
+          ? data.suggestions.filter(function (word) { return typeof word === "string"; })
+          : [];
+        if (document.activeElement !== queryInput) {
+          return;
+        }
+        renderSuggestions(words);
+      } catch (err) {
+        if (suggestController === controller) {
+          suggestController = null;
+          closeSuggestions();
+        }
+      }
+    }
+
+    queryInput.addEventListener("input", function () {
+      cancelPendingSuggestions();
+      const prefix = lastWord(queryInput.value);
+      if (queryInput.value.trim().length < SUGGEST_MIN_LENGTH || prefix.length < SUGGEST_MIN_LENGTH) {
+        closeSuggestions();
+        return;
+      }
+      suggestTimer = setTimeout(function () {
+        suggestTimer = null;
+        fetchSuggestions(prefix);
+      }, SUGGEST_DELAY_MS);
+    });
+
+    queryInput.addEventListener("keydown", function (event) {
+      if (suggestionList.hidden || suggestionWords.length === 0) {
+        return;
+      }
+      const count = suggestionWords.length;
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveSuggestion(activeSuggestion + 1 >= count ? 0 : activeSuggestion + 1);
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveSuggestion(activeSuggestion <= 0 ? count - 1 : activeSuggestion - 1);
+      } else if (event.key === "Enter") {
+        if (activeSuggestion >= 0) {
+          event.preventDefault();
+          pickSuggestion(suggestionWords[activeSuggestion]);
+        } else {
+          closeSuggestions();
+        }
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        closeSuggestions();
+      }
+    });
+
+    queryInput.addEventListener("blur", closeSuggestions);
+
     form.addEventListener("submit", function (event) {
       event.preventDefault();
+      closeSuggestions();
       search(queryInput.value, true);
     });
 
